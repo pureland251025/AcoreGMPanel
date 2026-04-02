@@ -95,7 +95,7 @@
 	}
 
 	if(isset($jsLocale['modules']) && is_array($jsLocale['modules'])){
-		foreach(['logs','smartai','bag_query','quest','item_owner','bitmask','mail','mass_mail','soap'] as $__name){
+		foreach(['aegis','logs','smartai','bag_query','quest','item_owner','bitmask','mail','mass_mail','soap'] as $__name){
 			if(isset($__keepMap[$__name])){
 				$jsLocale['modules'][$__name] = \Acme\Panel\Core\Lang::getArray('app.js.modules.' . $__name);
 			}

@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 use Acme\Panel\Core\Router;
 use Acme\Panel\Http\Controllers\AccountController;
+use Acme\Panel\Http\Controllers\Aegis\AegisController;
 use Acme\Panel\Http\Controllers\AuditController;
 use Acme\Panel\Http\Controllers\BagQuery\BagQueryController;
 use Acme\Panel\Http\Controllers\Character\CharacterController;
@@ -50,6 +51,12 @@ return static function (Router $router): void {
 
     $router->group([AuthMiddleware::class], static function (Router $router): void {
         $router->get('/account', [AccountController::class, 'index']);
+        $router->get('/aegis', [AegisController::class, 'index']);
+        $router->get('/aegis/api/overview', [AegisController::class, 'apiOverview']);
+        $router->get('/aegis/api/offenses', [AegisController::class, 'apiOffenses']);
+        $router->get('/aegis/api/events', [AegisController::class, 'apiEvents']);
+        $router->get('/aegis/api/player', [AegisController::class, 'apiPlayer']);
+        $router->get('/aegis/api/log', [AegisController::class, 'apiLog']);
         $router->get('/account/api/list', [AccountController::class, 'apiList']);
         $router->get('/account/api/ip-accounts', [AccountController::class, 'apiAccountsByIp']);
         $router->get('/account/api/ip-location', [AccountController::class, 'apiIpLocation']);
@@ -64,6 +71,7 @@ return static function (Router $router): void {
 
         $router->group([CsrfMiddleware::class], static function (Router $router): void {
             $router->post('/account/api/create', [AccountController::class, 'apiCreate']);
+            $router->post('/aegis/api/action', [AegisController::class, 'apiAction']);
             $router->post('/account/api/set-gm', [AccountController::class, 'apiSetGm']);
             $router->post('/soap/api/execute', [SoapWizardController::class, 'apiExecute']);
             $router->post('/smart-ai/api/preview', [SmartAiWizardController::class, 'apiPreview']);

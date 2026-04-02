@@ -65,6 +65,7 @@
     <li><a href="<?= url('/item-ownership') ?>" class="<?= $navActive('/item-ownership') ?>"><?= htmlspecialchars(__('app.nav.item_owner')) ?></a></li>
     <li><a href="<?= url('/soap') ?>" class="<?= $navActive('/soap') ?>"><?= htmlspecialchars(__('app.nav.soap')) ?></a></li>
     <li><a href="<?= url('/smart-ai') ?>" class="<?= $navActive('/smart-ai') ?>"><?= htmlspecialchars(__('app.nav.smart_ai')) ?></a></li>
+    <li><a href="<?= url('/aegis') ?>" class="<?= $navActive('/aegis') ?>"><?= htmlspecialchars(__('app.nav.aegis')) ?></a></li>
     <li><a href="<?= url('/logs') ?>" class="<?= $navActive('/logs') ?>"><?= htmlspecialchars(__('app.nav.logs')) ?></a></li>
   </ul>
   <div class="sidebar-metrics" id="sidebar-metrics">
