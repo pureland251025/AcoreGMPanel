@@ -148,6 +148,56 @@ class CharacterRepository extends MultiServerRepository
         return $row;
     }
 
+    public function findSummaryByName(string $name): ?array
+    {
+        $name = trim($name);
+        if ($name == '') {
+            return null;
+        }
+
+        $pdo = $this->characters();
+        $st = $pdo->prepare('SELECT guid,name,account,race,class,gender,level,money,xp,position_x,position_y,position_z,map,zone,online,totaltime,logout_time,at_login,stable_slots FROM characters WHERE name=:n LIMIT 1');
+        $st->execute([':n' => $name]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+
+        $row['online'] = (int) $row['online'];
+        $row['money'] = (int) $row['money'];
+        $row['level'] = (int) $row['level'];
+        $row['account'] = (int) $row['account'];
+
+        $row['homebind'] = $this->homebind((int) $row['guid']);
+
+        $account = $this->fetchAccounts([$row['account']]);
+        if (isset($account[$row['account']])) {
+            $row['account_username'] = $account[$row['account']]['username'];
+            $row['gmlevel'] = $account[$row['account']]['gmlevel'];
+        }
+
+        $row['ban'] = $this->banStatus((int) $row['guid']);
+
+        return $row;
+    }
+
+    public function accountHighestLevel(int $accountId): ?int
+    {
+        if ($accountId <= 0) {
+            return null;
+        }
+
+        $pdo = $this->characters();
+        $st = $pdo->prepare('SELECT MAX(level) AS max_level FROM characters WHERE account=:a');
+        $st->execute([':a' => $accountId]);
+        $max = $st->fetchColumn();
+        if ($max === false || $max === null) {
+            return null;
+        }
+
+        return (int) $max;
+    }
+
     public function inventory(int $guid): array
     {
         $pdo = $this->characters();

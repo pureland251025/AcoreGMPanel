@@ -8,6 +8,11 @@ namespace Acme\Panel\Http\Controllers\Character;
 
 use Acme\Panel\Core\{Controller,Lang,Request,Response};
 use Acme\Panel\Domain\Character\CharacterRepository;
+use Acme\Panel\Domain\CharacterBoost\BoostTemplateRepository;
+use Acme\Panel\Domain\CharacterBoost\CharacterBoostGuardException;
+use Acme\Panel\Domain\CharacterBoost\CharacterBoostNotFoundException;
+use Acme\Panel\Domain\CharacterBoost\CharacterBoostService;
+use Acme\Panel\Domain\CharacterBoost\CharacterBoostSoapException;
 use Acme\Panel\Support\{Auth,Audit,LogPath,ServerContext,ServerList};
 use Acme\Panel\Support\NfuwowNameResolver;
 use Acme\Panel\Support\SoapService;
@@ -98,6 +103,10 @@ class CharacterController extends Controller
         $achievements = $this->repo()->achievements($guid);
         $mailCount = $this->repo()->mailCount($guid);
 
+        $serverCfg = ServerContext::server();
+        $realmId = (int)($serverCfg['realm_id'] ?? 1);
+        $boostTemplates = (new BoostTemplateRepository())->listForRealm($realmId);
+
         return $this->view('character.show',[
             'title' => Lang::get('app.character.show.title',['name'=>$summary['name'],'guid'=>$guid]),
             'summary' => $summary,
@@ -110,7 +119,113 @@ class CharacterController extends Controller
             'cooldowns' => $cooldowns,
             'achievements' => $achievements,
             'mail_count' => $mailCount,
+            'boost_templates' => $boostTemplates,
             'error' => null,
+        ]);
+    }
+
+    public function apiBoost(Request $request): Response
+    {
+        if(!Auth::check()) {
+            return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        }
+
+        $this->maybeSwitchServer($request);
+
+        $guid = (int)$request->input('guid',0);
+        $templateIdRaw = $request->input('template_id', null);
+        $templateId = $templateIdRaw === null || $templateIdRaw === '' ? null : (int)$templateIdRaw;
+        $targetLevelRaw = $request->input('target_level', null);
+        $targetLevel = $targetLevelRaw === null || $targetLevelRaw === '' ? null : (int)$targetLevelRaw;
+
+        if($guid <= 0){
+            return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
+        }
+
+        $serverCfg = ServerContext::server();
+        $realmId = (int)($serverCfg['realm_id'] ?? 1);
+        try {
+            $svc = new CharacterBoostService(ServerContext::currentId());
+            $payload = $svc->boostByGuid(
+                $realmId,
+                $guid,
+                $templateId,
+                $targetLevel,
+                [
+                    'name' => (string)($_SESSION['panel_user'] ?? 'system'),
+                    'ip' => (string)$request->ip(),
+                ]
+            );
+        } catch (CharacterBoostNotFoundException $e) {
+            Audit::log('character','boost_failed', 'guid='.(string)$guid, [
+                'realm_id' => $realmId,
+                'server_id' => ServerContext::currentId(),
+                'guid' => $guid,
+                'template_id' => $templateId,
+                'target_level' => $targetLevel,
+                'error' => $e->getMessage(),
+            ]);
+            return $this->json(['success'=>false,'message'=>$e->getMessage()],404);
+        } catch (CharacterBoostGuardException $e) {
+            Audit::log('character','boost_failed', 'guid='.(string)$guid, [
+                'realm_id' => $realmId,
+                'server_id' => ServerContext::currentId(),
+                'guid' => $guid,
+                'template_id' => $templateId,
+                'target_level' => $targetLevel,
+                'error' => $e->getMessage(),
+            ]);
+            return $this->json(['success'=>false,'message'=>$e->getMessage()],422);
+        } catch (CharacterBoostSoapException $e) {
+            Audit::log('character','boost_failed', 'guid='.(string)$guid, [
+                'realm_id' => $realmId,
+                'server_id' => ServerContext::currentId(),
+                'guid' => $guid,
+                'template_id' => $templateId,
+                'target_level' => $targetLevel,
+                'error' => $e->getMessage(),
+            ]);
+            return $this->json(['success'=>false,'message'=>$e->getMessage()],500);
+        } catch(\Throwable $e) {
+            $this->logCharacterAction('boost', 'error', [
+                'guid' => $guid,
+                'template_id' => $templateId,
+                'target_level' => $targetLevel,
+                'server_id' => ServerContext::currentId(),
+                'realm_id' => $realmId,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            Audit::log('character','boost_failed', 'guid='.(string)$guid, [
+                'realm_id' => $realmId,
+                'server_id' => ServerContext::currentId(),
+                'guid' => $guid,
+                'template_id' => $templateId,
+                'target_level' => $targetLevel,
+                'error' => $e->getMessage(),
+            ]);
+            return $this->json(['success'=>false,'message'=>Lang::get('app.common.api.errors.request_failed_retry')],500);
+        }
+
+        $ch = $payload['character'] ?? [];
+        $commands = $payload['commands'] ?? [];
+
+        Audit::log('character','boost', 'guid='.(string)$guid, [
+            'realm_id' => $realmId,
+            'character' => $ch,
+            'commands' => array_map(static function($c){
+                return [
+                    'command' => $c['command'] ?? null,
+                    'success' => $c['response']['success'] ?? null,
+                ];
+            }, is_array($commands) ? $commands : []),
+        ]);
+
+        return $this->json([
+            'success' => true,
+            'message' => Lang::get('app.character.actions.boost_success'),
+            'payload' => $payload,
         ]);
     }
 

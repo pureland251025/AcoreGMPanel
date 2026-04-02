@@ -200,7 +200,7 @@
           const res = await fetch(endpoint, {
             method: 'POST',
             body: data,
-            headers: { 'X-CSRF-TOKEN': data.get('_csrf') || '' }
+            headers: { 'X-CSRF-TOKEN': data.get('_csrf') || '', 'Accept': 'application/json' }
           });
           const json = await res.json().catch(() => ({ success: false, message: 'Invalid response' }));
           flash(json.message || (json.success ? 'OK' : 'Failed'), !!json.success);
@@ -210,6 +210,32 @@
       });
     });
   }
+
+  // Boost form: if template selected, target level is derived from template
+  (function bindBoostTemplateToggle(){
+    const form = document.getElementById('char-boost-form');
+    if(!form) return;
+    const tpl = document.getElementById('char-boost-template');
+    const lvl = document.getElementById('char-boost-target-level');
+    if(!tpl || !lvl) return;
+
+    const apply = () => {
+      const opt = tpl.selectedOptions && tpl.selectedOptions[0];
+      const templateId = parseInt(tpl.value || '0', 10) || 0;
+      if(templateId > 0){
+        const t = opt ? (parseInt(opt.getAttribute('data-target-level') || '0', 10) || 0) : 0;
+        lvl.value = t ? String(t) : '';
+        lvl.setAttribute('disabled', 'disabled');
+        lvl.style.display = 'none';
+      } else {
+        lvl.removeAttribute('disabled');
+        lvl.style.display = '';
+      }
+    };
+
+    tpl.addEventListener('change', apply);
+    apply();
+  })();
 
   document.querySelectorAll('.js-table-filter').forEach(input => {
     const targetSel = input.getAttribute('data-target');

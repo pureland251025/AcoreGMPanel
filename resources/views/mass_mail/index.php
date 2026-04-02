@@ -31,24 +31,30 @@
       <div class="massmail-form-grid">
         <div class="massmail-field">
           <label for="boostCharacter"><?= __('app.mass_mail.index.sections.boost.character_label') ?></label>
-          <input type="text" id="boostCharacter" name="character" placeholder="<?= htmlspecialchars(__('app.mass_mail.index.sections.boost.character_placeholder'), ENT_QUOTES, 'UTF-8') ?>" autocomplete="off" required>
+          <input type="text" id="boostCharacter" name="character_name" placeholder="<?= htmlspecialchars(__('app.mass_mail.index.sections.boost.character_placeholder'), ENT_QUOTES, 'UTF-8') ?>" autocomplete="off" required>
         </div>
         <div class="massmail-field">
-          <label for="boostLevel"><?= __('app.mass_mail.index.sections.boost.level_label') ?></label>
-          <select id="boostLevel" name="level" required>
-            <option value="60"><?= __('app.mass_mail.index.sections.boost.level_options.60') ?></option>
-            <option value="70"><?= __('app.mass_mail.index.sections.boost.level_options.70') ?></option>
-            <option value="80"><?= __('app.mass_mail.index.sections.boost.level_options.80') ?></option>
+          <label for="boostTemplate"><?= htmlspecialchars(__('app.character.actions.boost_template_placeholder')) ?></label>
+          <select id="boostTemplate" name="template_id">
+            <option value=""><?= htmlspecialchars(__('app.character.actions.boost_template_placeholder')) ?></option>
+            <?php foreach(($boost_templates ?? []) as $tpl): ?>
+              <option value="<?= (int)($tpl['id'] ?? 0) ?>" data-target-level="<?= (int)($tpl['target_level'] ?? 0) ?>">
+                <?= htmlspecialchars((string)($tpl['name'] ?? '')) ?> (Lv<?= (int)($tpl['target_level'] ?? 0) ?>)
+              </option>
+            <?php endforeach; ?>
           </select>
         </div>
-        <div class="massmail-field full-span">
-          <label for="boostSummary"><?= __('app.mass_mail.index.sections.boost.summary_label') ?></label>
-          <textarea id="boostSummary" class="massmail-summary" rows="3" readonly><?= htmlspecialchars(__('app.mass_mail.index.sections.boost.summary_prefill'), ENT_QUOTES, 'UTF-8') ?></textarea>
+        <div class="massmail-field">
+          <label for="boostTargetLevel"><?= __('app.mass_mail.index.sections.boost.level_label') ?></label>
+          <input type="number" id="boostTargetLevel" name="target_level" min="1" max="255" placeholder="<?= htmlspecialchars(__('app.character.actions.boost_target_level_placeholder'), ENT_QUOTES, 'UTF-8') ?>">
         </div>
       </div>
       <div class="massmail-actions">
         <button type="submit" class="btn success" id="btnBoostExecute"><?= __('app.mass_mail.index.sections.boost.submit') ?></button>
       </div>
+      <p class="massmail-hint muted small" style="margin-top:10px">
+        <?= htmlspecialchars(__('app.character_boost.templates.hint.realm', ['id' => (int)($realm_id ?? 1)])) ?>
+      </p>
     </form>
   </section>
 

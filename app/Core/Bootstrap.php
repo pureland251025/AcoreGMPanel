@@ -234,6 +234,27 @@ class Bootstrap
             session_start();
         }
 
+        // Global server switch via query param (used by the server switch dropdown).
+        // Only allow switching for authenticated panel sessions.
+        if (isset($_GET['server']) && $_GET['server'] !== '') {
+            $rawServer = $_GET['server'];
+
+            // Accept non-negative integer server ids (including 0).
+            if (is_string($rawServer) && preg_match('/^\d+$/', $rawServer)) {
+                $sid = (int) $rawServer;
+
+                try {
+                    if (\Acme\Panel\Support\Auth::check() && \Acme\Panel\Support\ServerList::valid($sid)) {
+                        if (\Acme\Panel\Support\ServerContext::currentId() !== $sid) {
+                            \Acme\Panel\Support\ServerContext::set($sid);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // Ignore server switch failures to avoid breaking requests.
+                }
+            }
+        }
+
         $requestedLocale = isset($_GET['lang']) ? (string) $_GET['lang'] : null;
         if ($requestedLocale !== null && $requestedLocale !== '') {
             Lang::setLocale($requestedLocale);

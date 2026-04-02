@@ -54,6 +54,7 @@
     <li><a href="<?= url('/') ?>" class="<?= $navActive('/') ?>"><?= htmlspecialchars(__('app.nav.home')) ?></a></li>
     <li><a href="<?= url('/account') ?>" class="<?= $navActive('/account') ?>"><?= htmlspecialchars(__('app.nav.account')) ?></a></li>
     <li><a href="<?= url('/character') ?>" class="<?= $navActive('/character') ?>"><?= htmlspecialchars(__('app.nav.character')) ?></a></li>
+    <li><a href="<?= url('/character-boost/templates') ?>" class="<?= $navActive('/character-boost') ?>"><?= htmlspecialchars(__('app.nav.character_boost')) ?></a></li>
   <?php $itemActive = str_starts_with($currentPath, '/item-ownership') ? '' : $navActive('/item'); ?>
     <li><a href="<?= url('/item') ?>" class="<?= $itemActive ?>"><?= htmlspecialchars(__('app.nav.item')) ?></a></li>
     <li><a href="<?= url('/creature') ?>" class="<?= $navActive('/creature') ?>"><?= htmlspecialchars(__('app.nav.creature')) ?></a></li>

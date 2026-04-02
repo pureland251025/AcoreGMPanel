@@ -31,6 +31,10 @@
       <div class="char-summary-grid">
         <div>
           <h3 class="char-section-header"><?= htmlspecialchars(__('app.character.show.summary.title')) ?></h3>
+              <div style="margin-top:6px;opacity:.8;font-size:13px;display:flex;gap:12px;flex-wrap:wrap">
+                <a href="<?= url('/character-boost/templates') ?>" class="link"><?= htmlspecialchars(__('app.character.actions.boost_manage_templates')) ?></a>
+                <a href="<?= url('/character-boost/redeem-codes') ?>" class="link"><?= htmlspecialchars(__('app.character.actions.boost_manage_codes')) ?></a>
+              </div>
           <table class="table table--compact">
             <tbody>
               <tr><th><?= htmlspecialchars(__('app.character.show.summary.guid')) ?></th><td><?= (int)$summary['guid'] ?></td></tr>
@@ -95,6 +99,27 @@
                   </div>
                 </form>
               </div>
+
+              <form id="char-boost-form" class="js-char-action char-action-form" data-endpoint="<?= htmlspecialchars($charBase.'/api/boost') ?>">
+                <?= \Acme\Panel\Support\Csrf::field(); ?>
+                <input type="hidden" name="guid" value="<?= (int)$summary['guid'] ?>">
+                <label class="char-action-label"><?= htmlspecialchars(__('app.character.actions.boost_label')) ?></label>
+                <div class="input-group">
+                  <select id="char-boost-template" name="template_id" class="char-input--narrow">
+                    <option value=""><?= htmlspecialchars(__('app.character.actions.boost_template_placeholder')) ?></option>
+                    <?php foreach(($boost_templates ?? []) as $tpl): ?>
+                      <option value="<?= (int)($tpl['id'] ?? 0) ?>" data-target-level="<?= (int)($tpl['target_level'] ?? 0) ?>">
+                        <?= htmlspecialchars((string)($tpl['name'] ?? '')) ?> (Lv<?= (int)($tpl['target_level'] ?? 0) ?>)
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                  <input id="char-boost-target-level" class="char-input--narrow" type="number" name="target_level" min="1" max="255" value="" placeholder="<?= htmlspecialchars(__('app.character.actions.boost_target_level_placeholder')) ?>">
+                  <button class="btn btn-sm warn" type="submit"><?= htmlspecialchars(__('app.character.actions.boost_submit')) ?></button>
+                </div>
+                <div class="char-action-hint">
+                  <?= htmlspecialchars(__('app.character.actions.boost_hint')) ?>
+                </div>
+              </form>
             </div>
 
             <!-- Group: Moderation -->
