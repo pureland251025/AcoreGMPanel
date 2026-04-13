@@ -31,56 +31,109 @@ class CharacterController extends Controller
 
     private function maybeSwitchServer(Request $request): void
     {
-        $reqServer = $request->input('server', null);
-        if($reqServer !== null){
-            $sid = (int)$reqServer;
-            if(ServerContext::currentId() !== $sid && ServerList::valid($sid)){
-                ServerContext::set($sid);
-                if ($this->repo !== null) {
-                    $this->repo->rebind($sid);
-                }
-            }
-        }
+        $this->switchServerAndRebind($request, $this->repo);
+    }
+
+    private function requireCharacterListCapability(): void
+    {
+        $this->requireCapability('characters.list');
+    }
+
+    private function requireCharacterDetailsCapability(): void
+    {
+        $this->requireCapability('characters.details');
+    }
+
+    private function requireCharacterBanCapability(): void
+    {
+        $this->requireCapability('characters.ban');
+    }
+
+    private function requireCharacterLevelCapability(): void
+    {
+        $this->requireCapability('characters.level');
+    }
+
+    private function requireCharacterGoldCapability(): void
+    {
+        $this->requireCapability('characters.gold');
+    }
+
+    private function requireCharacterKickCapability(): void
+    {
+        $this->requireCapability('characters.kick');
+    }
+
+    private function requireCharacterTeleportCapability(): void
+    {
+        $this->requireCapability('characters.teleport');
+    }
+
+    private function requireCharacterResetCapability(): void
+    {
+        $this->requireCapability('characters.reset');
+    }
+
+    private function requireCharacterDeleteCapability(): void
+    {
+        $this->requireCapability('characters.delete');
     }
 
     public function index(Request $request): Response
     {
         if(!Auth::check()) return $this->redirect('/account/login');
+        $this->requireCharacterListCapability();
         $this->maybeSwitchServer($request);
 
-        $sort = (string)$request->input('sort','');
-        $allowedSort = ['', 'guid_asc','guid_desc','logout_asc','logout_desc','level_asc','level_desc','online_asc','online_desc'];
-        if(!in_array($sort,$allowedSort,true)){
-            $sort = '';
-        }
-        $loadAll = ((int)$request->input('load_all',0) === 1);
+        $state = $this->prepareCharacterListState($request);
+        $pager = $this->repo()->search(
+            $state['filters'],
+            $state['page'],
+            $state['per_page'],
+            $state['load_all'],
+            $state['sort']
+        );
 
-        $filters = [
-            'name' => (string)$request->input('name',''),
-            'guid' => (int)$request->input('guid',0),
-            'account' => (string)$request->input('account',''),
-            'level_min' => (int)$request->input('level_min',0),
-            'level_max' => (int)$request->input('level_max',0),
-            'online' => in_array($request->input('online','any'),['online','offline'],true) ? $request->input('online','any') : 'any',
-        ];
-
-        $page = (int)$request->input('page',1); $per=20;
-        $pager = $this->repo()->search($filters,$page,$per,$loadAll,$sort);
-
-        return $this->view('character.index',[
-            'title' => Lang::get('app.character.index.title'),
-            'pager' => $pager,
-            'filters' => $filters,
-            'sort' => $sort,
-            'load_all' => $loadAll,
-            'current_server' => ServerContext::currentId(),
-            'servers' => ServerList::options(),
+        return $this->pageView('character.index', $this->listViewData($pager, $state['filters'], [
+            'sort' => $state['sort'],
+            'load_all' => $state['load_all'],
+        ]), [
+            'capabilities' => [
+                'list' => 'characters.list',
+                'details' => 'characters.details',
+                'ban' => 'characters.ban',
+                'delete' => 'characters.delete',
+            ],
         ]);
+    }
+
+    private function prepareCharacterListState(Request $request): array
+    {
+        return [
+            'filters' => [
+                'name' => $this->normalizedString($request, 'name'),
+                'guid' => $request->int('guid', 0),
+                'account' => $this->normalizedString($request, 'account'),
+                'level_min' => $request->int('level_min', 0),
+                'level_max' => $request->int('level_max', 0),
+                'online' => $this->normalizedEnum($request, 'online', ['any', 'online', 'offline'], 'any'),
+            ],
+            'sort' => $this->normalizedEnum(
+                $request,
+                'sort',
+                ['', 'guid_asc','guid_desc','logout_asc','logout_desc','level_asc','level_desc','online_asc','online_desc'],
+                ''
+            ),
+            'load_all' => $this->normalizedBoolFlag($request, 'load_all'),
+            'page' => $this->normalizedPage($request),
+            'per_page' => 20,
+        ];
     }
 
     public function show(Request $request): Response
     {
         if(!Auth::check()) return $this->redirect('/account/login');
+        $this->requireCharacterDetailsCapability();
         $this->maybeSwitchServer($request);
 
         $guid = (int)$request->input('guid',0);
@@ -90,7 +143,20 @@ class CharacterController extends Controller
 
         $summary = $this->repo()->findSummary($guid);
         if(!$summary){
-            return $this->view('character.show',[ 'title'=>Lang::get('app.character.show.title_not_found',['guid'=>$guid]), 'summary'=>null, 'inventory'=>[], 'error'=>Lang::get('app.common.errors.not_found') ]);
+            return $this->pageView('character.show',[ 'summary'=>null, 'inventory'=>[], 'error'=>Lang::get('app.common.errors.not_found'), 'guid'=>$guid ], [
+                'capabilities' => [
+                    'details' => 'characters.details',
+                    'ban' => 'characters.ban',
+                    'delete' => 'characters.delete',
+                    'level' => 'characters.level',
+                    'gold' => 'characters.gold',
+                    'teleport' => 'characters.teleport',
+                    'reset' => 'characters.reset',
+                    'boost' => 'boost.apply',
+                    'boost_templates' => 'boost.templates',
+                    'boost_codes' => 'boost.codes',
+                ],
+            ]);
         }
 
         $inventory = $this->repo()->inventory($guid);
@@ -105,10 +171,11 @@ class CharacterController extends Controller
 
         $serverCfg = ServerContext::server();
         $realmId = (int)($serverCfg['realm_id'] ?? 1);
-        $boostTemplates = (new BoostTemplateRepository())->listForRealm($realmId);
+        $boostTemplates = Auth::can('boost.apply')
+            ? (new BoostTemplateRepository())->listForRealm($realmId)
+            : [];
 
-        return $this->view('character.show',[
-            'title' => Lang::get('app.character.show.title',['name'=>$summary['name'],'guid'=>$guid]),
+        return $this->pageView('character.show',[
             'summary' => $summary,
             'inventory' => $inventory,
             'skills' => $skills,
@@ -121,14 +188,25 @@ class CharacterController extends Controller
             'mail_count' => $mailCount,
             'boost_templates' => $boostTemplates,
             'error' => null,
+        ], [
+            'capabilities' => [
+                'details' => 'characters.details',
+                'ban' => 'characters.ban',
+                'delete' => 'characters.delete',
+                'level' => 'characters.level',
+                'gold' => 'characters.gold',
+                'teleport' => 'characters.teleport',
+                'reset' => 'characters.reset',
+                'boost' => 'boost.apply',
+                'boost_templates' => 'boost.templates',
+                'boost_codes' => 'boost.codes',
+            ],
         ]);
     }
 
     public function apiBoost(Request $request): Response
     {
-        if(!Auth::check()) {
-            return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
-        }
+        $this->requireCapability('boost.apply');
 
         $this->maybeSwitchServer($request);
 
@@ -232,45 +310,38 @@ class CharacterController extends Controller
     public function apiList(Request $request): Response
     {
         if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterListCapability();
         $this->maybeSwitchServer($request);
 
-        $sort = (string)$request->input('sort','');
-        $allowedSort = ['', 'guid_asc','guid_desc','logout_asc','logout_desc','level_asc','level_desc','online_asc','online_desc'];
-        if(!in_array($sort,$allowedSort,true)){
-            $sort = '';
-        }
-        $loadAll = ((int)$request->input('load_all',0) === 1);
-
-        $filters = [
-            'name' => (string)$request->input('name',''),
-            'guid' => (int)$request->input('guid',0),
-            'account' => (string)$request->input('account',''),
-            'level_min' => (int)$request->input('level_min',0),
-            'level_max' => (int)$request->input('level_max',0),
-            'online' => in_array($request->input('online','any'),['online','offline'],true) ? $request->input('online','any') : 'any',
-        ];
-
-        $pager = $this->repo()->search($filters,(int)$request->input('page',1),20,$loadAll,$sort);
+        $state = $this->prepareCharacterListState($request);
+        $pager = $this->repo()->search(
+            $state['filters'],
+            $state['page'],
+            $state['per_page'],
+            $state['load_all'],
+            $state['sort']
+        );
         return $this->json(['success'=>true,'page'=>$pager->page,'pages'=>$pager->pages,'total'=>$pager->total,'items'=>$pager->items]);
     }
 
     public function apiShow(Request $request): Response
     {
         if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterDetailsCapability();
         $this->maybeSwitchServer($request);
-        $guid = (int)$request->input('guid',0);
-        if($guid<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
-        $summary = $this->repo()->findSummary($guid);
+        $state = $this->prepareCharacterDetailState($request);
+        if($state['guid']<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
+        $summary = $this->repo()->findSummary($state['guid']);
         if(!$summary) return $this->json(['success'=>false,'message'=>Lang::get('app.common.errors.not_found')],404);
-        $inventory = $this->repo()->inventory($guid);
-        $skills = $this->repo()->skills($guid);
-        $spells = $this->repo()->spells($guid);
-        $reps = $this->repo()->reputations($guid);
-        $quests = $this->repo()->quests($guid);
-        $auras = $this->repo()->auras($guid);
-        $cooldowns = $this->repo()->cooldowns($guid);
-        $ach = $this->repo()->achievements($guid);
-        $mailCount = $this->repo()->mailCount($guid);
+        $inventory = $this->repo()->inventory($state['guid']);
+        $skills = $this->repo()->skills($state['guid']);
+        $spells = $this->repo()->spells($state['guid']);
+        $reps = $this->repo()->reputations($state['guid']);
+        $quests = $this->repo()->quests($state['guid']);
+        $auras = $this->repo()->auras($state['guid']);
+        $cooldowns = $this->repo()->cooldowns($state['guid']);
+        $ach = $this->repo()->achievements($state['guid']);
+        $mailCount = $this->repo()->mailCount($state['guid']);
         return $this->json([
             'success'=>true,
             'summary'=>$summary,
@@ -292,35 +363,58 @@ class CharacterController extends Controller
             return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
         }
 
-        $type = strtolower(trim((string)$request->input('type','')));
-        $allowed = ['spell','skill','achievement','achievementcriteria','quest','faction'];
-        if(!in_array($type,$allowed,true)){
+        $this->requireCharacterListCapability();
+
+        $state = $this->prepareCharacterNameLookupState($request);
+        if($state['type'] === ''){
             return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_params')],422);
         }
 
-        $raw = (string)$request->input('ids','');
-        $parts = preg_split('/\s*,\s*/', $raw, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        $ids = array_values(array_unique(array_filter(array_map('intval',$parts), static fn($v)=>$v>0)));
-        if(!$ids){
-            return $this->json(['success'=>true,'type'=>$type,'names'=>[]]);
-        }
-
-        if(count($ids) > 80){
-            $ids = array_slice($ids, 0, 80);
+        if(!$state['ids']){
+            return $this->json(['success'=>true,'type'=>$state['type'],'names'=>[]]);
         }
 
         try {
-            $names = NfuwowNameResolver::resolveMany($type, $ids);
+            $names = NfuwowNameResolver::resolveMany($state['type'], $state['ids']);
         } catch(\Throwable $e) {
             return $this->json(['success'=>false,'message'=>Lang::get('app.common.errors.query_failed',['message'=>$e->getMessage()])],500);
         }
 
-        return $this->json(['success'=>true,'type'=>$type,'names'=>$names]);
+        return $this->json(['success'=>true,'type'=>$state['type'],'names'=>$names]);
+    }
+
+    private function prepareCharacterDetailState(Request $request): array
+    {
+        return [
+            'guid' => max(0, (int) $request->input('guid', 0)),
+        ];
+    }
+
+    private function prepareCharacterNameLookupState(Request $request): array
+    {
+        $type = $this->normalizedEnum(
+            $request,
+            'type',
+            ['spell', 'skill', 'achievement', 'achievementcriteria', 'quest', 'faction'],
+            ''
+        );
+        $raw = $this->normalizedString($request, 'ids');
+        $parts = preg_split('/\s*,\s*/', $raw, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $ids = array_values(array_unique(array_filter(array_map('intval', $parts), static fn($value) => $value > 0)));
+
+        if (count($ids) > 80) {
+            $ids = array_slice($ids, 0, 80);
+        }
+
+        return [
+            'type' => $type,
+            'ids' => $ids,
+        ];
     }
 
     public function apiBan(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterBanCapability();
         $this->maybeSwitchServer($request);
         $guid = (int)$request->input('guid',0);
         $hours = (int)$request->input('hours',0);
@@ -340,7 +434,7 @@ class CharacterController extends Controller
 
     public function apiUnban(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterBanCapability();
         $this->maybeSwitchServer($request);
         $guid = (int)$request->input('guid',0);
         if($guid<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
@@ -357,7 +451,7 @@ class CharacterController extends Controller
 
     public function apiSetLevel(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterLevelCapability();
         $this->maybeSwitchServer($request);
         $guid = (int)$request->input('guid',0);
         $level = (int)$request->input('level',0);
@@ -381,7 +475,7 @@ class CharacterController extends Controller
 
     public function apiSetGold(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterGoldCapability();
         $this->maybeSwitchServer($request);
         $guid = (int)$request->input('guid',0);
         $copper = (int)$request->input('copper',-1);
@@ -404,7 +498,7 @@ class CharacterController extends Controller
 
     public function apiKick(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterKickCapability();
         $this->maybeSwitchServer($request);
         $guid = (int)$request->input('guid',0);
         if($guid<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
@@ -420,7 +514,7 @@ class CharacterController extends Controller
 
     public function apiTeleport(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterTeleportCapability();
         $this->maybeSwitchServer($request);
         $guid=(int)$request->input('guid',0);
         $map=(int)$request->input('map',0);
@@ -442,7 +536,7 @@ class CharacterController extends Controller
 
     public function apiUnstuck(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterTeleportCapability();
         $this->maybeSwitchServer($request);
         $guid=(int)$request->input('guid',0);
         if($guid<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
@@ -459,7 +553,7 @@ class CharacterController extends Controller
 
     public function apiResetTalents(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterResetCapability();
         $this->maybeSwitchServer($request);
         $guid=(int)$request->input('guid',0);
         if($guid<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
@@ -476,7 +570,7 @@ class CharacterController extends Controller
 
     public function apiResetSpells(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterResetCapability();
         $this->maybeSwitchServer($request);
         $guid=(int)$request->input('guid',0);
         if($guid<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
@@ -493,7 +587,7 @@ class CharacterController extends Controller
 
     public function apiResetCooldowns(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterResetCapability();
         $this->maybeSwitchServer($request);
         $guid=(int)$request->input('guid',0);
         if($guid<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
@@ -510,7 +604,7 @@ class CharacterController extends Controller
 
     public function apiRenameFlag(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterResetCapability();
         $this->maybeSwitchServer($request);
         $guid=(int)$request->input('guid',0);
         if($guid<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
@@ -527,7 +621,7 @@ class CharacterController extends Controller
 
     public function apiDelete(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $this->requireCharacterDeleteCapability();
         $this->maybeSwitchServer($request);
         $guid=(int)$request->input('guid',0);
         if($guid<=0) return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_id')],422);
@@ -548,10 +642,21 @@ class CharacterController extends Controller
 
     public function apiBulk(Request $request): Response
     {
-        if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.auth.errors.not_logged_in')],403);
+        $action = strtolower(trim((string)$request->input('action','')));
+        switch ($action) {
+            case 'delete':
+                $this->requireCharacterDeleteCapability();
+                break;
+            case 'ban':
+            case 'unban':
+                $this->requireCharacterBanCapability();
+                break;
+            default:
+                $this->requireLogin();
+                break;
+        }
         $this->maybeSwitchServer($request);
 
-        $action = strtolower(trim((string)$request->input('action','')));
         $allowed = ['delete','ban','unban'];
         if(!in_array($action,$allowed,true)){
             return $this->json(['success'=>false,'message'=>Lang::get('app.common.validation.missing_params')],422);

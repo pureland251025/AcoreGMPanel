@@ -13,30 +13,21 @@ $endpointDeleteUnused = url('/character-boost/api/redeem-codes/delete-unused');
 $endpointPurgeUnused = url('/character-boost/api/redeem-codes/purge-unused');
 $realmId = (int) ($realm_id ?? 1);
 $templates = is_array($templates ?? null) ? $templates : [];
+
+include dirname(__DIR__) . '/components/page_header.php';
 ?>
 
-<h1 class="page-title"><?= htmlspecialchars(__('app.character_boost.codes.title')) ?></h1>
-
-<div class="panel" style="margin-bottom:12px">
-  <div class="flex between center" style="gap:12px;flex-wrap:wrap">
-    <div></div>
-    <div class="flex center" style="gap:10px;flex-wrap:wrap">
-      <a class="btn" href="<?= url('/character-boost/templates') ?>"><?= htmlspecialchars(__('app.character_boost.templates.title')) ?></a>
-    </div>
-  </div>
-</div>
-
-<div class="panel" style="margin-bottom:12px">
-  <div id="boostCodesFlash" class="panel-flash panel-flash--inline" style="display:none"></div>
+<div class="panel cb-panel-section">
+  <div id="boostCodesFlash" class="panel-flash panel-flash--inline cb-flash-hidden"></div>
 
   <form id="boostCodesForm" class="form" data-endpoint="<?= htmlspecialchars($endpoint) ?>">
     <?= Csrf::field() ?>
 
     <div class="form-row">
       <label class="label"><?= htmlspecialchars(__('app.character_boost.codes.fields.realm')) ?></label>
-      <div class="input" style="display:flex;align-items:center;gap:8px">
+      <div class="input cb-inline-input">
         <strong><?= htmlspecialchars((string)$realmId) ?></strong>
-        <span style="opacity:.7"><?= htmlspecialchars(__('app.character_boost.codes.hint.realm_from_server')) ?></span>
+        <span class="cb-muted"><?= htmlspecialchars(__('app.character_boost.codes.hint.realm_from_server')) ?></span>
       </div>
     </div>
 
@@ -55,18 +46,18 @@ $templates = is_array($templates ?? null) ? $templates : [];
     <div class="form-row">
       <label class="label" for="boostCodesCount"><?= htmlspecialchars(__('app.character_boost.codes.fields.count')) ?></label>
       <input id="boostCodesCount" name="count" type="number" class="input" min="1" max="10000" value="10" required />
-      <div class="help" style="margin-top:6px;opacity:.75;font-size:13px">
+      <div class="help cb-help">
         <?= htmlspecialchars(__('app.character_boost.codes.hint.count_limit')) ?>
       </div>
     </div>
 
     <div class="form-row">
       <label class="label"><?= htmlspecialchars(__('app.character_boost.codes.fields.output')) ?></label>
-      <label style="display:flex;gap:8px;align-items:center">
+      <label class="cb-inline-check">
         <input type="checkbox" name="download" value="1" />
         <span><?= htmlspecialchars(__('app.character_boost.codes.fields.download')) ?></span>
       </label>
-      <div class="help" style="margin-top:6px;opacity:.75;font-size:13px">
+      <div class="help cb-help">
         <?= htmlspecialchars(__('app.character_boost.codes.hint.download')) ?>
       </div>
     </div>
@@ -78,17 +69,17 @@ $templates = is_array($templates ?? null) ? $templates : [];
 </div>
 
 <div class="panel">
-  <h3 style="margin:0 0 10px"><?= htmlspecialchars(__('app.character_boost.codes.generated.title')) ?></h3>
-  <textarea id="boostCodesOutput" class="input" style="width:100%;min-height:220px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace" readonly></textarea>
-  <div class="help" style="margin-top:6px;opacity:.75;font-size:13px">
+  <h3 class="cb-section-title"><?= htmlspecialchars(__('app.character_boost.codes.generated.title')) ?></h3>
+  <textarea id="boostCodesOutput" class="input cb-output" readonly></textarea>
+  <div class="help cb-help">
     <?= htmlspecialchars(__('app.character_boost.codes.generated.hint')) ?>
   </div>
 </div>
 
-<div class="panel" style="margin-top:12px">
-  <h3 style="margin:0 0 10px"><?= htmlspecialchars(__('app.character_boost.codes.manage.title')) ?></h3>
+<div class="panel cb-manage-section">
+  <h3 class="cb-section-title"><?= htmlspecialchars(__('app.character_boost.codes.manage.title')) ?></h3>
 
-  <div id="boostCodesManageFlash" class="panel-flash panel-flash--inline" style="display:none"></div>
+  <div id="boostCodesManageFlash" class="panel-flash panel-flash--inline cb-flash-hidden"></div>
 
   <form id="boostCodesManageForm" class="form"
         data-endpoint-stats="<?= htmlspecialchars($endpointStats) ?>"
@@ -111,7 +102,7 @@ $templates = is_array($templates ?? null) ? $templates : [];
 
     <div class="form-row">
       <label class="label"><?= htmlspecialchars(__('app.character_boost.codes.manage.fields.unused_only')) ?></label>
-      <label style="display:flex;gap:8px;align-items:center">
+      <label class="cb-inline-check">
         <input type="checkbox" id="boostCodesManageUnusedOnly" name="unused_only" value="1" checked />
         <span><?= htmlspecialchars(__('app.character_boost.codes.manage.fields.unused_only_label')) ?></span>
       </label>
@@ -119,27 +110,27 @@ $templates = is_array($templates ?? null) ? $templates : [];
 
     <div class="form-row">
       <label class="label"><?= htmlspecialchars(__('app.character_boost.codes.manage.stats.title')) ?></label>
-      <div class="input" style="display:flex;gap:12px;flex-wrap:wrap">
+      <div class="input cb-inline-stats">
         <span><?= htmlspecialchars(__('app.character_boost.codes.manage.stats.total')) ?>: <strong id="boostCodesStatTotal">-</strong></span>
         <span><?= htmlspecialchars(__('app.character_boost.codes.manage.stats.unused')) ?>: <strong id="boostCodesStatUnused">-</strong></span>
         <span><?= htmlspecialchars(__('app.character_boost.codes.manage.stats.used')) ?>: <strong id="boostCodesStatUsed">-</strong></span>
       </div>
     </div>
 
-    <div class="form-row" style="display:flex;gap:10px;flex-wrap:wrap">
+    <div class="form-row cb-action-row">
       <button class="btn" id="boostCodesManageRefresh" type="button"><?= htmlspecialchars(__('app.character_boost.codes.manage.actions.refresh')) ?></button>
       <button class="btn btn-danger" id="boostCodesManagePurgeUnused" type="button"><?= htmlspecialchars(__('app.character_boost.codes.manage.actions.purge_unused')) ?></button>
     </div>
   </form>
 
-  <div style="margin-top:10px;overflow:auto">
-    <table class="table table--compact" style="min-width:820px">
+  <div class="cb-table-wrap">
+    <table class="table table--compact cb-table-min">
       <thead>
         <tr>
           <th>
-            <a href="#" id="boostCodesSortId" style="color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+            <a href="#" id="boostCodesSortId" class="cb-sort-link">
               <span><?= htmlspecialchars(__('app.character_boost.codes.manage.columns.id')) ?></span>
-              <span id="boostCodesSortIdIcon" style="opacity:.7"></span>
+              <span id="boostCodesSortIdIcon" class="cb-sort-icon"></span>
             </a>
           </th>
           <th><?= htmlspecialchars(__('app.character_boost.codes.manage.columns.template')) ?></th>
@@ -151,18 +142,18 @@ $templates = is_array($templates ?? null) ? $templates : [];
         </tr>
       </thead>
       <tbody id="boostCodesManageTbody">
-        <tr><td colspan="7" style="text-align:center;opacity:.75"><?= htmlspecialchars(__('app.common.loading')) ?></td></tr>
+        <tr><td colspan="7" class="cb-empty-cell"><?= htmlspecialchars(__('app.common.loading')) ?></td></tr>
       </tbody>
     </table>
   </div>
 
-  <div class="help" style="margin-top:8px;opacity:.75;font-size:13px">
+  <div class="help cb-help cb-help--spaced">
     <?= htmlspecialchars(__('app.character_boost.codes.manage.hint')) ?>
   </div>
 
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center">
+  <div class="cb-pager">
     <button class="btn" id="boostCodesPagePrev" type="button">&larr;</button>
-    <span id="boostCodesPageInfo" style="opacity:.8"></span>
+    <span id="boostCodesPageInfo" class="cb-toolbar-note"></span>
     <button class="btn" id="boostCodesPageNext" type="button">&rarr;</button>
   </div>
 </div>

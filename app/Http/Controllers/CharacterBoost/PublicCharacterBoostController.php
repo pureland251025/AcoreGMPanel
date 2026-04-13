@@ -44,8 +44,7 @@ class PublicCharacterBoostController extends Controller
 
     public function index(Request $request): Response
     {
-        return $this->view('character_boost.redeem', [
-            'title' => Lang::get('app.character_boost.redeem.title'),
+        return $this->pageView('character_boost.redeem', [], [
             'module' => 'character_boost_redeem',
         ]);
     }
@@ -174,9 +173,9 @@ class PublicCharacterBoostController extends Controller
             }
 
             $svc = new CharacterBoostService($serverId);
-            $payload = $svc->boostByGuid(
+            $payload = $svc->boostBySummary(
                 $realmId,
-                (int) ($summary['guid'] ?? 0),
+                $summary,
                 $templateId,
                 null,
                 [

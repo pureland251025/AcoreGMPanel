@@ -5,11 +5,33 @@ declare(strict_types=1);
 namespace Acme\Panel\Domain\Aegis;
 
 use Acme\Panel\Domain\Support\MultiServerRepository;
+use Acme\Panel\Domain\Support\ReadModelCache;
 use Acme\Panel\Support\Paginator;
 use PDO;
 
 class AegisRepository extends MultiServerRepository
 {
+    private ReadModelCache $readCache;
+
+    public function __construct(?int $serverId = null)
+    {
+        parent::__construct($serverId);
+        $this->readCache = new ReadModelCache('aegis_server_' . $this->serverId);
+    }
+
+    public function rebind(int $serverId): void
+    {
+        parent::rebind($serverId);
+        $this->readCache = new ReadModelCache('aegis_server_' . $this->serverId);
+    }
+
+    public function invalidateReadCaches(): void
+    {
+        $this->readCache->clearNamespace('identity');
+        $this->readCache->clearNamespace('accounts');
+        $this->readCache->clearNamespace('character_summary');
+    }
+
     public function overview(int $days = 7): array
     {
         $days = max(1, min(90, $days));
@@ -468,32 +490,42 @@ class AegisRepository extends MultiServerRepository
     private function resolveIdentityMatches(string $query): array
     {
         $query = trim($query);
-        $like = '%' . $query . '%';
-
-        $guids = [];
-        $stmt = $this->characters()->prepare('SELECT guid FROM characters WHERE name LIKE :name LIMIT 200');
-        $stmt->execute([':name' => $like]);
-        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [] as $guid) {
-            $guid = (int) $guid;
-            if ($guid > 0) {
-                $guids[] = $guid;
-            }
+        if ($query === '') {
+            return ['guids' => [], 'account_ids' => []];
         }
 
-        $accountIds = [];
-        $stmt = $this->auth()->prepare('SELECT id FROM account WHERE username LIKE :name LIMIT 200');
-        $stmt->execute([':name' => $like]);
-        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [] as $accountId) {
-            $accountId = (int) $accountId;
-            if ($accountId > 0) {
-                $accountIds[] = $accountId;
-            }
-        }
+        $cacheKey = 'server_' . $this->serverId . '_identity_' . sha1(mb_strtolower($query, 'UTF-8'));
 
-        return [
-            'guids' => array_values(array_unique($guids)),
-            'account_ids' => array_values(array_unique($accountIds)),
-        ];
+        $cached = $this->readCache->remember('identity', $cacheKey, 30, function () use ($query): array {
+            $like = '%' . $query . '%';
+
+            $guids = [];
+            $stmt = $this->characters()->prepare('SELECT guid FROM characters WHERE name LIKE :name LIMIT 200');
+            $stmt->execute([':name' => $like]);
+            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [] as $guid) {
+                $guid = (int) $guid;
+                if ($guid > 0) {
+                    $guids[] = $guid;
+                }
+            }
+
+            $accountIds = [];
+            $stmt = $this->auth()->prepare('SELECT id FROM account WHERE username LIKE :name LIMIT 200');
+            $stmt->execute([':name' => $like]);
+            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [] as $accountId) {
+                $accountId = (int) $accountId;
+                if ($accountId > 0) {
+                    $accountIds[] = $accountId;
+                }
+            }
+
+            return [
+                'guids' => array_values(array_unique($guids)),
+                'account_ids' => array_values(array_unique($accountIds)),
+            ];
+        });
+
+        return is_array($cached) ? $cached : ['guids' => [], 'account_ids' => []];
     }
 
     private function fetchCharacterMap(array $guids): array
@@ -540,24 +572,47 @@ class AegisRepository extends MultiServerRepository
             return [];
         }
 
-        $placeholders = implode(',', array_fill(0, count($accountIds), '?'));
-        $stmt = $this->auth()->prepare(
-            'SELECT id, username FROM account WHERE id IN (' . $placeholders . ')'
-        );
-        foreach ($accountIds as $index => $accountId) {
-            $stmt->bindValue($index + 1, $accountId, PDO::PARAM_INT);
-        }
-        $stmt->execute();
-
         $map = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-            $accountId = (int) ($row['id'] ?? 0);
-            if ($accountId <= 0) {
-                continue;
+        $missing = [];
+        foreach ($accountIds as $accountId) {
+            $cacheKey = 'server_' . $this->serverId . '_account_' . $accountId;
+            $cached = $this->readCache->get('accounts', $cacheKey);
+            if (is_array($cached)) {
+                $map[$accountId] = $cached;
+            } else {
+                $missing[] = $accountId;
             }
-            $map[$accountId] = [
-                'username' => (string) ($row['username'] ?? ''),
-            ];
+        }
+
+        if ($missing) {
+            $placeholders = implode(',', array_fill(0, count($missing), '?'));
+            $stmt = $this->auth()->prepare(
+                'SELECT id, username FROM account WHERE id IN (' . $placeholders . ')'
+            );
+            foreach ($missing as $index => $accountId) {
+                $stmt->bindValue($index + 1, $accountId, PDO::PARAM_INT);
+            }
+            $stmt->execute();
+
+            $found = [];
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+                $accountId = (int) ($row['id'] ?? 0);
+                if ($accountId <= 0) {
+                    continue;
+                }
+                $payload = [
+                    'username' => (string) ($row['username'] ?? ''),
+                ];
+                $map[$accountId] = $payload;
+                $found[$accountId] = true;
+                $this->readCache->set('accounts', 'server_' . $this->serverId . '_account_' . $accountId, $payload, 60);
+            }
+
+            foreach ($missing as $accountId) {
+                if (!isset($found[$accountId])) {
+                    $this->readCache->set('accounts', 'server_' . $this->serverId . '_account_' . $accountId, ['username' => ''], 60);
+                }
+            }
         }
 
         return $map;
@@ -595,12 +650,16 @@ class AegisRepository extends MultiServerRepository
             return null;
         }
 
-        $stmt = $this->characters()->prepare(
-            'SELECT guid, name, account, level, class, race, map, zone, online '
-            . 'FROM characters WHERE guid = :guid LIMIT 1'
-        );
-        $stmt->execute([':guid' => $guid]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $cacheKey = 'server_' . $this->serverId . '_guid_' . $guid;
+        $row = $this->readCache->remember('character_summary', $cacheKey, 30, function () use ($guid) {
+            $stmt = $this->characters()->prepare(
+                'SELECT guid, name, account, level, class, race, map, zone, online '
+                . 'FROM characters WHERE guid = :guid LIMIT 1'
+            );
+            $stmt->execute([':guid' => $guid]);
+            return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        });
+
         if (!$row) {
             return null;
         }
@@ -615,12 +674,16 @@ class AegisRepository extends MultiServerRepository
             return null;
         }
 
-        $stmt = $this->characters()->prepare(
-            'SELECT guid, name, account, level, class, race, map, zone, online '
-            . 'FROM characters WHERE name = :name LIMIT 1'
-        );
-        $stmt->execute([':name' => $name]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $cacheKey = 'server_' . $this->serverId . '_name_' . sha1(mb_strtolower($name, 'UTF-8'));
+        $row = $this->readCache->remember('character_summary', $cacheKey, 30, function () use ($name) {
+            $stmt = $this->characters()->prepare(
+                'SELECT guid, name, account, level, class, race, map, zone, online '
+                . 'FROM characters WHERE name = :name LIMIT 1'
+            );
+            $stmt->execute([':name' => $name]);
+            return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        });
+
         if (!$row) {
             return null;
         }

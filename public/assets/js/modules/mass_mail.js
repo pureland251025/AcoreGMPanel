@@ -315,8 +315,8 @@
       `<ul class="summary">${lines.map(line=>`<li>${line}</li>`).join('')}</ul>`+
       `<p class="muted small">${footer}</p>`;
   }
-  function openConfirm(summaryHtml){ const modal=qs('#mmConfirmModal'); if(!modal) return; modal.style.removeProperty('display'); modal.classList.add('active'); qs('#mmConfirmBody',modal).innerHTML=summaryHtml; const input=qs('#mmConfirmInput',modal); const ok=qs('#mmConfirmOk',modal); input.value=''; ok.disabled=true; const closeEls=qsa('[data-close]',modal); closeEls.forEach(el=> el.addEventListener('click',closeConfirm)); input.addEventListener('input',()=>{ ok.disabled = input.value.trim().toUpperCase()!=='CONFIRM'; }); ok.addEventListener('click',onConfirmOk,{once:true}); input.focus(); }
-  function closeConfirm(){ const modal=qs('#mmConfirmModal'); if(!modal) return; modal.classList.remove('active'); modal.style.removeProperty('display'); const ok=qs('#mmConfirmOk',modal); ok.replaceWith(ok.cloneNode(true)); const input=qs('#mmConfirmInput',modal); if(input){ const newInput=input.cloneNode(true); input.replaceWith(newInput); }
+  function openConfirm(summaryHtml){ const modal=qs('#mmConfirmModal'); if(!modal) return; modal.classList.add('active'); document.body.classList.add('modal-open'); qs('#mmConfirmBody',modal).innerHTML=summaryHtml; const input=qs('#mmConfirmInput',modal); const ok=qs('#mmConfirmOk',modal); input.value=''; ok.disabled=true; const closeEls=qsa('[data-close]',modal); closeEls.forEach(el=> el.addEventListener('click',closeConfirm)); input.addEventListener('input',()=>{ ok.disabled = input.value.trim().toUpperCase()!=='CONFIRM'; }); ok.addEventListener('click',onConfirmOk,{once:true}); input.focus(); }
+  function closeConfirm(){ const modal=qs('#mmConfirmModal'); if(!modal) return; modal.classList.remove('active'); if(!document.querySelector('.modal-backdrop.active')) document.body.classList.remove('modal-open'); const ok=qs('#mmConfirmOk',modal); ok.replaceWith(ok.cloneNode(true)); const input=qs('#mmConfirmInput',modal); if(input){ const newInput=input.cloneNode(true); input.replaceWith(newInput); }
     qsa('[data-close]',modal).forEach(btn=> btn.replaceWith(btn.cloneNode(true))); pendingSendData=null; }
   async function onConfirmOk(){ if(confirming) return; confirming=true; const data=pendingSendData; pendingSendData=null; closeConfirm(); if(data){ await actuallySend(data); } confirming=false; }
   async function actuallySend(data){
@@ -409,10 +409,10 @@
         const t = opt ? (parseInt(opt.getAttribute('data-target-level') || '0', 10) || 0) : 0;
         level.value = t ? String(t) : '';
         level.setAttribute('disabled','disabled');
-        level.style.display = 'none';
+        level.hidden = true;
       } else {
         level.removeAttribute('disabled');
-        level.style.display = '';
+        level.hidden = false;
       }
     };
     if(tpl){

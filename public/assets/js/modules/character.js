@@ -150,9 +150,8 @@
   function flash(msg, ok){
     if(!feedback) return;
     feedback.textContent = msg || (ok ? 'OK' : 'Error');
-    feedback.classList.remove('panel-flash--success','panel-flash--danger');
+    feedback.classList.remove('panel-flash--success','panel-flash--danger','char-feedback--hidden');
     feedback.classList.add('panel-flash--inline','is-visible', ok ? 'panel-flash--success' : 'panel-flash--danger');
-    feedback.style.display = 'block';
   }
 
   // Teleport presets (character/show)
@@ -190,6 +189,7 @@
         e.preventDefault();
         const endpoint = form.dataset.endpoint;
         if(!endpoint) return;
+        if(form.dataset.confirm && !confirm(form.dataset.confirm)) return;
 
         const data = new FormData(form);
         if(!data.get('_csrf') && window.__CSRF_TOKEN){
@@ -226,10 +226,10 @@
         const t = opt ? (parseInt(opt.getAttribute('data-target-level') || '0', 10) || 0) : 0;
         lvl.value = t ? String(t) : '';
         lvl.setAttribute('disabled', 'disabled');
-        lvl.style.display = 'none';
+        lvl.hidden = true;
       } else {
         lvl.removeAttribute('disabled');
-        lvl.style.display = '';
+        lvl.hidden = false;
       }
     };
 
@@ -251,7 +251,7 @@
       const cols = table.tHead ? table.tHead.rows[0].cells.length : 1;
       const td = document.createElement('td');
       td.colSpan = cols;
-      td.style.textAlign = 'center';
+      td.className = 'char-empty-cell';
       td.textContent = emptyLabel;
       noneRow.appendChild(td);
       tbody.appendChild(noneRow);
@@ -266,21 +266,21 @@
       Array.from(tbody.rows).forEach(row => {
         if(row.classList.contains('js-filter-none')) return;
         if(row.classList.contains('js-empty-row')){
-          row.style.display = q ? 'none' : '';
+          row.hidden = !!q;
           return;
         }
         const text = (row.innerText || '').toLowerCase();
         const match = !q || text.includes(q);
-        row.style.display = match ? '' : 'none';
+        row.hidden = !match;
         if(match) visible++;
       });
 
       if(q){
-        noneRow.style.display = visible === 0 ? '' : 'none';
-        if(emptyRow) emptyRow.style.display = 'none';
+        noneRow.hidden = visible !== 0;
+        if(emptyRow) emptyRow.hidden = true;
       } else {
-        noneRow.style.display = 'none';
-        if(emptyRow) emptyRow.style.display = visible === 0 ? '' : 'none';
+        noneRow.hidden = true;
+        if(emptyRow) emptyRow.hidden = visible !== 0;
       }
     };
 

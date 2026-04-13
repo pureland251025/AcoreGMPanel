@@ -29,7 +29,8 @@ use Acme\Panel\Support\Audit;
 class MassMailController extends Controller
 {
     private MassMailService $svc;
-    public function __construct()
+
+    private function refreshService(): void
     {
         $soap = Config::get('soap', []);
         if(!is_array($soap) || !$soap){
@@ -41,36 +42,72 @@ class MassMailController extends Controller
                 'uri' => 'urn:AC',
             ];
         }
-        $this->svc = new MassMailService($soap);
+
+        $this->svc = new MassMailService($soap, ServerContext::currentId());
+    }
+
+    private function requireComposeCapability(): void
+    {
+        $this->requireCapability('mass_mail.compose');
+    }
+
+    private function requireAnnounceCapability(): void
+    {
+        $this->requireCapability('mass_mail.announce');
+    }
+
+    private function requireSendCapability(): void
+    {
+        $this->requireCapability('mass_mail.send');
+    }
+
+    private function requireLogsCapability(): void
+    {
+        $this->requireCapability('mass_mail.logs');
+    }
+
+    private function requireBoostCapability(): void
+    {
+        $this->requireCapability('mass_mail.boost');
+    }
+
+    public function __construct()
+    {
+        $this->refreshService();
     }
 
     public function index(Request $request): Response
     {
-    if(!Auth::check()) return $this->redirect('/account/login');
+    $this->requireComposeCapability();
 
-    $reqServer=$request->input('server',null); if($reqServer!==null){ $sid=(int)$reqServer; if(ServerContext::currentId()!==$sid && ServerList::valid($sid)){ ServerContext::set($sid);
- } }
+    $this->switchServerAndRefresh($request, function (): void { $this->refreshService(); });
                 $logs = $this->svc->recentLogs(30);
                 $serverCfg = ServerContext::server();
                 $realmId = (int)($serverCfg['realm_id'] ?? 1);
                 $boostTemplates = (new BoostTemplateRepository(ServerContext::currentId()))->listForRealm($realmId);
 
-        return $this->view('mass_mail.index',[
-            'title'=>Lang::get('app.mass_mail.index.page_title'),
+        return $this->pageView('mass_mail.index', $this->serverViewData([
             'logs'=>$logs,
-            'current_server'=>ServerContext::currentId(),
-            'servers'=>ServerList::options(),
             'realm_id' => $realmId,
             'boost_templates' => $boostTemplates,
+        ]), [
+            'capabilities' => [
+                'compose' => 'mass_mail.compose',
+                'announce' => 'mass_mail.announce',
+                'send' => 'mass_mail.send',
+                'logs' => 'mass_mail.logs',
+                'boost' => 'mass_mail.boost',
+            ],
         ]);
     }
 
     public function apiAnnounce(Request $request): Response
-    { if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.common.api.errors.unauthorized')],401); $msg=(string)$request->input('message',''); $res=$this->svc->sendAnnounce($msg); return $this->json($res,$res['success']?200:422); }
+    { $this->requireAnnounceCapability(); $this->switchServerAndRefresh($request, function (): void { $this->refreshService(); }); $msg=(string)$request->input('message',''); $res=$this->svc->sendAnnounce($msg); return $this->json($res,$res['success']?200:422); }
 
     public function apiSend(Request $request): Response
     {
-    if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.common.api.errors.unauthorized')],401);
+    $this->requireSendCapability();
+        $this->switchServerAndRefresh($request, function (): void { $this->refreshService(); });
         $action=$request->input('action','');
         $subject=(string)$request->input('subject','');
         $body=(string)$request->input('body','');
@@ -93,11 +130,12 @@ class MassMailController extends Controller
     }
 
     public function apiLogs(Request $request): Response
-    { if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.common.api.errors.unauthorized')],401); $limit=(int)$request->input('limit',30); $rows=$this->svc->recentLogs($limit); return $this->json(['success'=>true,'logs'=>$rows]); }
+    { $this->requireLogsCapability(); $this->switchServerAndRefresh($request, function (): void { $this->refreshService(); }); $limit=(int)$request->input('limit',30); $rows=$this->svc->recentLogs($limit); return $this->json(['success'=>true,'logs'=>$rows]); }
 
     public function apiBoost(Request $request): Response
     {
-    if(!Auth::check()) return $this->json(['success'=>false,'message'=>Lang::get('app.common.api.errors.unauthorized')],401);
+    $this->requireBoostCapability();
+                $this->switchServerAndRefresh($request, function (): void { $this->refreshService(); });
                 $characterName=trim((string)$request->input('character_name', (string)$request->input('character','')));
                 $templateIdRaw = $request->input('template_id', null);
                 $templateId = $templateIdRaw === null || $templateIdRaw === '' ? null : (int)$templateIdRaw;

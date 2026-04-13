@@ -36,6 +36,19 @@ class CharacterBoostService
             throw new CharacterBoostNotFoundException('未找到指定角色。');
         }
 
+        return $this->boostBySummary($realmId, $summary, $templateId, $targetLevel, $operator);
+    }
+
+    /**
+     * @param array<string,mixed> $summary
+     * @return array{character:array<string,mixed>,commands:array<int,array<string,mixed>>}
+     */
+    public function boostBySummary(int $realmId, array $summary, ?int $templateId, ?int $targetLevel, array $operator): array
+    {
+        if (empty($summary['guid'])) {
+            throw new CharacterBoostNotFoundException('未找到指定角色。');
+        }
+
         $name = (string) ($summary['name'] ?? '');
         $classId = (int) ($summary['class'] ?? 0);
         $previousLevel = (int) ($summary['level'] ?? 0);

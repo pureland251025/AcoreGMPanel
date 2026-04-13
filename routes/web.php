@@ -134,6 +134,7 @@ return static function (Router $router): void {
             $router->post('/creature/api/delete', [CreatureController::class, 'apiDelete']);
             $router->post('/creature/api/save', [CreatureController::class, 'apiSave']);
             $router->post('/creature/api/exec-sql', [CreatureController::class, 'apiExecSql']);
+            $router->post('/creature/api/logs', [CreatureController::class, 'apiLogs']);
             $router->post('/creature/api/fetch-row', [CreatureController::class, 'apiFetchRow']);
             $router->post('/creature/api/add-model', [CreatureController::class, 'apiAddModel']);
             $router->post('/creature/api/edit-model', [CreatureController::class, 'apiEditModel']);

@@ -1,18 +1,29 @@
 <?php
 
-$module = 'aegis';
-include __DIR__ . '/../layouts/base_top.php';
-
 $aegis_data = $aegis_data ?? [];
 $options = $aegis_data['options'] ?? [];
 $defaults = $aegis_data['defaults'] ?? [];
+$aegisCapabilities = is_array($__pageCapabilities ?? null)
+  ? $__pageCapabilities
+  : [
+    'dashboard' => $__can('aegis.dashboard'),
+    'overview' => $__can('aegis.overview'),
+    'offenses' => $__can('aegis.offenses'),
+    'events' => $__can('aegis.events'),
+    'player' => $__can('aegis.player'),
+    'actions' => $__can('aegis.actions'),
+    'logs' => $__can('aegis.logs'),
+  ];
+$__pageCapabilities = $aegisCapabilities;
+$capabilityNotice = $__canAll(['aegis.overview', 'aegis.offenses', 'aegis.events', 'aegis.player', 'aegis.actions', 'aegis.logs'])
+    ? null
+    : __('app.common.capabilities.page_limited');
 ?>
-<h1 class="page-title"><?= htmlspecialchars(__('app.aegis.page_title')) ?></h1>
-<p class="muted" style="margin-top:-8px;margin-bottom:20px;">
-  <?= htmlspecialchars(__('app.aegis.intro')) ?>
-</p>
+<?php include __DIR__ . '/../components/page_header.php'; ?>
+<?php include __DIR__ . '/../components/capability_notice.php'; ?>
 
 <div class="aegis-layout">
+  <?php if($aegisCapabilities['overview']): ?>
   <section class="aegis-panel aegis-panel--full">
     <div class="aegis-toolbar">
       <div class="aegis-toolbar__group">
@@ -32,7 +43,7 @@ $defaults = $aegis_data['defaults'] ?? [];
       </div>
     </div>
 
-    <div id="aegisFeedback" class="panel-flash panel-flash--inline" style="display:none"></div>
+    <div id="aegisFeedback" class="panel-flash panel-flash--inline aegis-feedback-hidden"></div>
 
     <div class="aegis-stats" id="aegisStatsGrid">
       <?php for ($i = 0; $i < 6; $i++): ?>
@@ -64,7 +75,13 @@ $defaults = $aegis_data['defaults'] ?? [];
       </article>
     </div>
   </section>
+  <?php else: ?>
+  <section class="aegis-panel aegis-panel--full">
+    <div class="panel-flash panel-flash--info panel-flash--inline is-visible"><?= htmlspecialchars(__('app.common.capabilities.section_hidden', ['section' => __('app.aegis.overview.stage_distribution')])) ?></div>
+  </section>
+  <?php endif; ?>
 
+  <?php if($aegisCapabilities['player']): ?>
   <section class="aegis-panel">
     <div class="aegis-panel__head">
       <h2><?= htmlspecialchars(__('app.aegis.player.title')) ?></h2>
@@ -82,7 +99,13 @@ $defaults = $aegis_data['defaults'] ?? [];
       <?= htmlspecialchars(__('app.aegis.player.empty')) ?>
     </div>
   </section>
+  <?php else: ?>
+  <section class="aegis-panel">
+    <div class="panel-flash panel-flash--info panel-flash--inline is-visible"><?= htmlspecialchars(__('app.common.capabilities.section_hidden', ['section' => __('app.aegis.player.title')])) ?></div>
+  </section>
+  <?php endif; ?>
 
+  <?php if($aegisCapabilities['actions']): ?>
   <section class="aegis-panel">
     <div class="aegis-panel__head">
       <h2><?= htmlspecialchars(__('app.aegis.manual.title')) ?></h2>
@@ -113,7 +136,13 @@ $defaults = $aegis_data['defaults'] ?? [];
       <li><?= htmlspecialchars(__('app.aegis.manual.help.purge')) ?></li>
     </ul>
   </section>
+  <?php else: ?>
+  <section class="aegis-panel">
+    <div class="panel-flash panel-flash--info panel-flash--inline is-visible"><?= htmlspecialchars(__('app.common.capabilities.section_hidden', ['section' => __('app.aegis.manual.title')])) ?></div>
+  </section>
+  <?php endif; ?>
 
+  <?php if($aegisCapabilities['offenses']): ?>
   <section class="aegis-panel aegis-panel--full">
     <div class="aegis-panel__head">
       <h2><?= htmlspecialchars(__('app.aegis.offense.title')) ?></h2>
@@ -176,7 +205,13 @@ $defaults = $aegis_data['defaults'] ?? [];
     </div>
     <div class="aegis-pagination" id="aegisOffensePagination"></div>
   </section>
+  <?php else: ?>
+  <section class="aegis-panel aegis-panel--full">
+    <div class="panel-flash panel-flash--info panel-flash--inline is-visible"><?= htmlspecialchars(__('app.common.capabilities.section_hidden', ['section' => __('app.aegis.offense.title')])) ?></div>
+  </section>
+  <?php endif; ?>
 
+  <?php if($aegisCapabilities['events']): ?>
   <section class="aegis-panel aegis-panel--full">
     <div class="aegis-panel__head">
       <h2><?= htmlspecialchars(__('app.aegis.event.title')) ?></h2>
@@ -241,7 +276,13 @@ $defaults = $aegis_data['defaults'] ?? [];
     </div>
     <div class="aegis-pagination" id="aegisEventPagination"></div>
   </section>
+  <?php else: ?>
+  <section class="aegis-panel aegis-panel--full">
+    <div class="panel-flash panel-flash--info panel-flash--inline is-visible"><?= htmlspecialchars(__('app.common.capabilities.section_hidden', ['section' => __('app.aegis.event.title')])) ?></div>
+  </section>
+  <?php endif; ?>
 
+  <?php if($aegisCapabilities['logs']): ?>
   <section class="aegis-panel aegis-panel--full">
     <div class="aegis-panel__head">
       <h2><?= htmlspecialchars(__('app.aegis.log.title')) ?></h2>
@@ -250,9 +291,11 @@ $defaults = $aegis_data['defaults'] ?? [];
     <div class="aegis-log-meta" id="aegisLogMeta"><?= htmlspecialchars(__('app.aegis.log.meta_empty')) ?></div>
     <pre class="aegis-log-box" id="aegisLogBox"><?= htmlspecialchars(__('app.aegis.log.empty')) ?></pre>
   </section>
+  <?php else: ?>
+  <section class="aegis-panel aegis-panel--full">
+    <div class="panel-flash panel-flash--info panel-flash--inline is-visible"><?= htmlspecialchars(__('app.common.capabilities.section_hidden', ['section' => __('app.aegis.log.title')])) ?></div>
+  </section>
+  <?php endif; ?>
 </div>
 
-<script>
-window.AEGIS_DATA = <?= json_encode($aegis_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-</script>
-<?php include __DIR__ . '/../layouts/base_bottom.php'; ?>
+<script type="application/json" data-panel-json data-global="AEGIS_DATA"><?= json_encode($aegis_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>

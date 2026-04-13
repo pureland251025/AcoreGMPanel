@@ -1,15 +1,43 @@
 (function(){
+  const panel = window.Panel || {};
+  const moduleLocaleFn = typeof panel.moduleLocale === 'function'
+    ? panel.moduleLocale.bind(panel)
+    : null;
+  const moduleTranslator = typeof panel.createModuleTranslator === 'function'
+    ? panel.createModuleTranslator('character_boost')
+    : null;
   const form = document.getElementById('boostRedeemForm');
   const flashBox = document.getElementById('boostRedeemFlash');
   const realmSelect = document.getElementById('boostRedeemRealm');
   const templateSelect = document.getElementById('boostRedeemTemplate');
 
+  const translate = (path, fallback, replacements) => {
+    const sentinel = 'modules.character_boost.' + path;
+    let text = sentinel;
+    if(moduleLocaleFn){
+      text = moduleLocaleFn('character_boost', path, sentinel);
+    } else if(moduleTranslator){
+      text = moduleTranslator(path, sentinel);
+    }
+    if(text === sentinel){
+      text = fallback ?? sentinel;
+    }
+    if(typeof text === 'string' && replacements){
+      Object.entries(replacements).forEach(([key, value]) => {
+        text = text.replace(new RegExp(':' + key + '(?![A-Za-z0-9_])', 'g'), String(value ?? ''));
+      });
+    }
+    return text;
+  };
+
   const showFlash = (msg, ok) => {
     if(!flashBox) return;
-    flashBox.textContent = msg || (ok ? 'OK' : 'Error');
-    flashBox.classList.remove('panel-flash--success','panel-flash--danger');
+    flashBox.textContent = msg || translate(
+      ok ? 'common.ok' : 'common.error',
+      ok ? 'OK' : 'Error'
+    );
+    flashBox.classList.remove('panel-flash--success','panel-flash--danger','cb-flash-hidden');
     flashBox.classList.add('panel-flash--inline','is-visible', ok ? 'panel-flash--success' : 'panel-flash--danger');
-    flashBox.style.display = 'block';
   };
 
   if(!form || !realmSelect || !templateSelect) return;
@@ -28,7 +56,7 @@
     if(!list.length){
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = 'No templates';
+      opt.textContent = translate('redeem.templates.empty', 'No templates');
       templateSelect.appendChild(opt);
       templateSelect.disabled = true;
       return;
@@ -49,7 +77,12 @@
       const res = await fetch(optionsEndpoint, { method: 'GET' });
       const json = await res.json();
       if(!json || !json.success){
-        showFlash((json && json.message) ? json.message : 'Failed to load options', false);
+        showFlash(
+          (json && json.message)
+            ? json.message
+            : translate('redeem.errors.load_options_failed', 'Failed to load options'),
+          false
+        );
         return;
       }
 
@@ -60,7 +93,7 @@
       realms.forEach(r => {
         const opt = document.createElement('option');
         opt.value = String(r.realm_id);
-        opt.textContent = r.label || ('Realm ' + r.realm_id);
+        opt.textContent = r.label || translate('redeem.realms.option', 'Realm :id', { id: r.realm_id });
         realmSelect.appendChild(opt);
       });
 
@@ -70,7 +103,10 @@
         renderTemplatesForRealm(firstRealm);
       }
     } catch(err){
-      showFlash((err && err.message) ? err.message : 'Network error', false);
+      showFlash(
+        (err && err.message) ? err.message : translate('common.network_error', 'Network error'),
+        false
+      );
     }
   };
 
@@ -86,7 +122,6 @@
       data.set('_csrf', window.__CSRF_TOKEN);
     }
 
-    // Server decides template by redeem code; template_id is for display only.
     data.delete('template_id');
 
     try {
@@ -95,10 +130,22 @@
         body: data,
         headers: { 'X-CSRF-TOKEN': data.get('_csrf') || '' }
       });
-      const json = await res.json().catch(() => ({ success: false, message: 'Invalid response' }));
-      showFlash(json.message || (json.success ? 'OK' : 'Failed'), !!json.success);
+      const json = await res.json().catch(() => ({
+        success: false,
+        message: translate('common.invalid_response', 'Invalid response')
+      }));
+      showFlash(
+        json.message || translate(
+          json.success ? 'common.ok' : 'common.failed',
+          json.success ? 'OK' : 'Failed'
+        ),
+        !!json.success
+      );
     } catch(err){
-      showFlash((err && err.message) ? err.message : 'Network error', false);
+      showFlash(
+        (err && err.message) ? err.message : translate('common.network_error', 'Network error'),
+        false
+      );
     }
   });
 

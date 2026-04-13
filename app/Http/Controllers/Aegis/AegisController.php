@@ -8,17 +8,53 @@ use Acme\Panel\Core\Controller;
 use Acme\Panel\Core\Lang;
 use Acme\Panel\Core\Request;
 use Acme\Panel\Core\Response;
+use Acme\Panel\Domain\Aegis\AegisActionHydrator;
 use Acme\Panel\Domain\Aegis\AegisRepository;
 use Acme\Panel\Support\Audit;
 use Acme\Panel\Support\Auth;
 use Acme\Panel\Support\GameMaps;
 use Acme\Panel\Support\ServerContext;
-use Acme\Panel\Support\ServerList;
 use Acme\Panel\Support\SoapExecutor;
 
 class AegisController extends Controller
 {
     private ?AegisRepository $repo = null;
+    private ?AegisActionHydrator $mutations = null;
+
+    private function requireDashboardCapability(): void
+    {
+        $this->requireCapability('aegis.dashboard');
+    }
+
+    private function requireOverviewCapability(): void
+    {
+        $this->requireCapability('aegis.overview');
+    }
+
+    private function requireOffensesCapability(): void
+    {
+        $this->requireCapability('aegis.offenses');
+    }
+
+    private function requireEventsCapability(): void
+    {
+        $this->requireCapability('aegis.events');
+    }
+
+    private function requirePlayerCapability(): void
+    {
+        $this->requireCapability('aegis.player');
+    }
+
+    private function requireActionsCapability(): void
+    {
+        $this->requireCapability('aegis.actions');
+    }
+
+    private function requireLogsCapability(): void
+    {
+        $this->requireCapability('aegis.logs');
+    }
 
     private function repo(): AegisRepository
     {
@@ -29,35 +65,27 @@ class AegisController extends Controller
         return $this->repo;
     }
 
-    private function maybeSwitchServer(Request $request): void
+    private function mutations(): AegisActionHydrator
     {
-        $requestedServer = $request->input('server', null);
-        if ($requestedServer === null) {
-            return;
+        if ($this->mutations === null) {
+            $this->mutations = new AegisActionHydrator();
         }
 
-        $serverId = (int) $requestedServer;
-        if ($serverId !== ServerContext::currentId() && ServerList::valid($serverId)) {
-            ServerContext::set($serverId);
-            if ($this->repo !== null) {
-                $this->repo->rebind($serverId);
-            }
-        }
+        return $this->mutations;
+    }
+
+    private function maybeSwitchServer(Request $request): void
+    {
+        $this->switchServerAndRebind($request, $this->repo);
     }
 
     public function index(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->redirect('/account/login');
-        }
+        $this->requireDashboardCapability();
 
         $this->maybeSwitchServer($request);
 
-        return $this->view('aegis.index', [
-            'title' => Lang::get('app.aegis.page_title'),
-            'module' => 'aegis',
-            'current_server' => ServerContext::currentId(),
-            'servers' => ServerList::options(),
+        return $this->pageView('aegis.index', $this->serverViewData([
             'aegis_data' => [
                 'options' => [
                     'cheat_types' => $this->cheatTypes(),
@@ -73,18 +101,28 @@ class AegisController extends Controller
                     'log_limit' => 80,
                 ],
             ],
+        ]), [
+            'module' => 'aegis',
+            'capabilities' => [
+                'dashboard' => 'aegis.dashboard',
+                'overview' => 'aegis.overview',
+                'offenses' => 'aegis.offenses',
+                'events' => 'aegis.events',
+                'player' => 'aegis.player',
+                'actions' => 'aegis.actions',
+                'logs' => 'aegis.logs',
+            ],
         ]);
     }
 
     public function apiOverview(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireOverviewCapability();
 
         $this->maybeSwitchServer($request);
 
-        $overview = $this->repo()->overview($request->int('days', 7));
+        $state = $this->prepareOverviewState($request);
+        $overview = $this->repo()->overview($state['days']);
         return $this->json([
             'success' => true,
             'payload' => $overview,
@@ -93,19 +131,12 @@ class AegisController extends Controller
 
     public function apiOffenses(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireOffensesCapability();
 
         $this->maybeSwitchServer($request);
 
-        $pager = $this->repo()->searchOffenses([
-            'query' => (string) $request->input('query', ''),
-            'stage' => (string) $request->input('stage', ''),
-            'cheat_type' => $request->int('cheat_type', 0),
-            'status' => (string) $request->input('status', 'all'),
-            'sort' => (string) $request->input('sort', 'last_offense_desc'),
-        ], $request->int('page', 1), $request->int('per_page', 20));
+        $state = $this->prepareOffenseListState($request);
+        $pager = $this->repo()->searchOffenses($state['filters'], $state['page'], $state['per_page']);
 
         return $this->json([
             'success' => true,
@@ -120,18 +151,12 @@ class AegisController extends Controller
 
     public function apiEvents(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireEventsCapability();
 
         $this->maybeSwitchServer($request);
 
-        $pager = $this->repo()->searchEvents([
-            'query' => (string) $request->input('query', ''),
-            'cheat_type' => $request->int('cheat_type', 0),
-            'evidence_level' => (string) $request->input('evidence_level', ''),
-            'days' => $request->int('days', 7),
-        ], $request->int('page', 1), $request->int('per_page', 20));
+        $state = $this->prepareEventListState($request);
+        $pager = $this->repo()->searchEvents($state['filters'], $state['page'], $state['per_page']);
 
         return $this->json([
             'success' => true,
@@ -146,19 +171,19 @@ class AegisController extends Controller
 
     public function apiPlayer(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requirePlayerCapability();
 
         $this->maybeSwitchServer($request);
 
-        $guid = $request->int('guid', 0);
-        $name = trim((string) $request->input('name', ''));
-        if ($guid <= 0 && $name === '') {
+        $state = $this->preparePlayerLookupState($request);
+        if ($state['guid'] <= 0 && $state['name'] === '') {
             return $this->json(['success' => false, 'message' => Lang::get('app.aegis.errors.player_required')], 422);
         }
 
-        $payload = $this->repo()->findPlayerSnapshot($guid > 0 ? $guid : null, $name !== '' ? $name : null);
+        $payload = $this->repo()->findPlayerSnapshot(
+            $state['guid'] > 0 ? $state['guid'] : null,
+            $state['name'] !== '' ? $state['name'] : null
+        );
         if ($payload === null) {
             return $this->json(['success' => false, 'message' => Lang::get('app.common.errors.not_found')], 404);
         }
@@ -171,25 +196,23 @@ class AegisController extends Controller
 
     public function apiAction(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireActionsCapability();
 
         $this->maybeSwitchServer($request);
 
-        $action = strtolower(trim((string) $request->input('action', '')));
-        $target = trim((string) $request->input('target', ''));
-        $allowed = ['clear', 'delete', 'purge', 'reload'];
-        if (!in_array($action, $allowed, true)) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.aegis.errors.invalid_action')], 422);
-        }
+        $hydrated = $this->mutations()->action([
+            'action' => $request->input('action', ''),
+            'target' => $request->input('target', ''),
+            'ip' => $request->ip(),
+        ]);
+        if (!$hydrated['valid'])
+            return $this->json(['success' => false, 'message' => $hydrated['message']], $hydrated['status']);
+
+        $action = (string) $hydrated['payload']['action'];
+        $target = (string) $hydrated['payload']['target'];
 
         $resolvedTarget = null;
-        if (in_array($action, ['clear', 'delete'], true)) {
-            if ($target === '') {
-                return $this->json(['success' => false, 'message' => Lang::get('app.aegis.errors.target_required')], 422);
-            }
-
+        if (!empty($hydrated['payload']['requires_target'])) {
             $resolvedTarget = $this->repo()->resolveCommandTarget($target);
             if ($resolvedTarget === null || ($resolvedTarget['name'] ?? '') === '') {
                 return $this->json(['success' => false, 'message' => Lang::get('app.common.errors.not_found')], 404);
@@ -206,6 +229,9 @@ class AegisController extends Controller
             'server_id' => ServerContext::currentId(),
             'audit' => true,
         ]);
+
+        if (($result['success'] ?? false) === true)
+            $this->repo()->invalidateReadCaches();
 
         Audit::log('aegis', 'command', $action, [
             'server_id' => ServerContext::currentId(),
@@ -232,16 +258,66 @@ class AegisController extends Controller
 
     public function apiLog(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireLogsCapability();
 
         $this->maybeSwitchServer($request);
-        $payload = $this->repo()->recentLog($request->int('limit', 80));
+        $state = $this->prepareLogState($request);
+        $payload = $this->repo()->recentLog($state['limit']);
         return $this->json([
             'success' => true,
             'payload' => $payload,
         ]);
+    }
+
+    private function prepareOverviewState(Request $request): array
+    {
+        return [
+            'days' => $this->boundedInt($request, 'days', 7, 1, 365),
+        ];
+    }
+
+    private function prepareOffenseListState(Request $request): array
+    {
+        return [
+            'filters' => [
+                'query' => $this->normalizedString($request, 'query'),
+                'stage' => $this->normalizedString($request, 'stage'),
+                'cheat_type' => $request->int('cheat_type', 0),
+                'status' => $this->normalizedString($request, 'status', 'all') ?: 'all',
+                'sort' => $this->normalizedString($request, 'sort', 'last_offense_desc') ?: 'last_offense_desc',
+            ],
+            'page' => $this->normalizedPage($request),
+            'per_page' => $this->boundedInt($request, 'per_page', 20, 1, 200),
+        ];
+    }
+
+    private function prepareEventListState(Request $request): array
+    {
+        return [
+            'filters' => [
+                'query' => $this->normalizedString($request, 'query'),
+                'cheat_type' => $request->int('cheat_type', 0),
+                'evidence_level' => $this->normalizedString($request, 'evidence_level'),
+                'days' => $this->boundedInt($request, 'days', 7, 1, 365),
+            ],
+            'page' => $this->normalizedPage($request),
+            'per_page' => $this->boundedInt($request, 'per_page', 20, 1, 200),
+        ];
+    }
+
+    private function preparePlayerLookupState(Request $request): array
+    {
+        return [
+            'guid' => $request->int('guid', 0),
+            'name' => $this->normalizedString($request, 'name'),
+        ];
+    }
+
+    private function prepareLogState(Request $request): array
+    {
+        return [
+            'limit' => $this->boundedInt($request, 'limit', 80, 1, 500),
+        ];
     }
 
     private function cheatTypes(): array

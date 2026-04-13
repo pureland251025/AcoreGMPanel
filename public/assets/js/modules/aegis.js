@@ -7,6 +7,8 @@
   const data = window.AEGIS_DATA || { options:{}, defaults:{} };
   const opts = data.options || {};
   const defaults = data.defaults || {};
+  const capabilities = window.PANEL_CAPABILITIES || {};
+  const can = key => capabilities[key] !== false;
 
   const searchParams = new URLSearchParams(location.search);
   const currentServer = searchParams.get('server') || '';
@@ -91,7 +93,8 @@
     }
     if(dom.feedback){
       dom.feedback.textContent = message;
-      dom.feedback.style.display = 'block';
+      dom.feedback.classList.remove('aegis-feedback-hidden');
+      dom.feedback.classList.add('is-visible');
     }
   }
 
@@ -123,6 +126,7 @@
   }
 
   function setLoading(tableBody, colspan){
+    if(!tableBody) return;
     tableBody.innerHTML = `<tr><td colspan="${colspan}" class="text-center muted">${esc(t('status.loading', 'Loading...'))}</td></tr>`;
   }
 
@@ -148,6 +152,7 @@
   }
 
   async function loadOverview(){
+    if(!can('overview') || !dom.statsGrid || !dom.overviewDays) return;
     const days = Number(dom.overviewDays.value || defaults.overview_days || 7);
     const json = await request(`/aegis/api/overview?days=${encodeURIComponent(days)}`, 'GET');
     if(!json || !json.success){
@@ -172,19 +177,26 @@
 
     dom.stageSummary.innerHTML = (payload.stages || []).map((row) => `<span class="badge">${esc(stageLabel(row.value))}: ${esc(row.total)}</span>`).join('') || `<span class="muted">${esc(t('status.empty', 'No data'))}</span>`;
     dom.cheatSummary.innerHTML = (payload.cheats || []).map((row) => `<span class="badge">${esc(cheatLabel(row.value))}: ${esc(row.total)}</span>`).join('') || `<span class="muted">${esc(t('status.empty', 'No data'))}</span>`;
-    dom.topOffenders.innerHTML = (payload.top_offenders || []).map((row) => `
-      <button type="button" class="aegis-list-item" data-guid="${Number(row.guid || 0)}" data-name="${esc(row.player_name || '')}">
+    dom.topOffenders.innerHTML = (payload.top_offenders || []).map((row) => {
+      const inner = `
         <strong>${esc(row.player_name || ('#' + row.guid))}</strong>
         <span>${esc(stageLabel(row.punish_stage))}</span>
         <span>${esc(t('top.offense_count', 'Offenses: :count').replace(':count', row.offense_count || 0))}</span>
-      </button>
-    `).join('') || `<div class="muted">${esc(t('status.empty', 'No data'))}</div>`;
-    dom.topOffenders.querySelectorAll('[data-guid]').forEach((button) => {
-      button.addEventListener('click', () => loadPlayer({ guid: Number(button.getAttribute('data-guid') || 0) }));
-    });
+      `;
+      if(can('player')){
+        return `<button type="button" class="aegis-list-item" data-guid="${Number(row.guid || 0)}" data-name="${esc(row.player_name || '')}">${inner}</button>`;
+      }
+      return `<div class="aegis-list-item">${inner}</div>`;
+    }).join('') || `<div class="muted">${esc(t('status.empty', 'No data'))}</div>`;
+    if(can('player')){
+      dom.topOffenders.querySelectorAll('[data-guid]').forEach((button) => {
+        button.addEventListener('click', () => loadPlayer({ guid: Number(button.getAttribute('data-guid') || 0) }));
+      });
+    }
   }
 
   async function loadPlayer(input){
+    if(!can('player') || !dom.playerCard || !dom.playerLookup) return;
     const guid = input && input.guid ? Number(input.guid) : 0;
     const name = input && input.name ? String(input.name).trim() : '';
     const query = guid > 0 ? `guid=${guid}` : `name=${encodeURIComponent(name)}`;
@@ -225,6 +237,7 @@
   }
 
   async function loadOffenses(page){
+    if(!can('offenses') || !dom.offenseTable) return;
     state.offensePage = page || 1;
     setLoading(dom.offenseTable, 9);
     const params = new URLSearchParams({
@@ -254,23 +267,28 @@
           <td>${esc(row.offense_tier || 0)}</td>
           <td title="${esc(row.last_reason || '')}">${esc(row.last_reason || '-')}</td>
           <td>${esc(formatTime(Number(row.last_offense_at || 0)))}</td>
-          <td>
-            <button type="button" class="btn-sm btn outline js-aegis-action" data-action="clear" data-target="${esc(row.player_name || '')}">${esc(t('actions.clear', 'Clear'))}</button>
-            <button type="button" class="btn-sm btn danger js-aegis-action" data-action="delete" data-target="${esc(row.player_name || '')}">${esc(t('actions.delete', 'Delete'))}</button>
-          </td>
+          <td>${can('actions')
+            ? `<button type="button" class="btn-sm btn outline js-aegis-action" data-action="clear" data-target="${esc(row.player_name || '')}">${esc(t('actions.clear', 'Clear'))}</button>
+            <button type="button" class="btn-sm btn danger js-aegis-action" data-action="delete" data-target="${esc(row.player_name || '')}">${esc(t('actions.delete', 'Delete'))}</button>`
+            : `<span class="muted">${esc(t('status.read_only', 'Read-only'))}</span>`}</td>
         </tr>
       `).join('');
     }
-    dom.offenseTable.querySelectorAll('[data-player-guid]').forEach((button) => {
-      button.addEventListener('click', () => loadPlayer({ guid: Number(button.getAttribute('data-player-guid') || 0) }).catch(handleError));
-    });
-    dom.offenseTable.querySelectorAll('.js-aegis-action').forEach((button) => {
-      button.addEventListener('click', () => submitAction(button.getAttribute('data-action') || '', button.getAttribute('data-target') || ''));
-    });
+    if(can('player')){
+      dom.offenseTable.querySelectorAll('[data-player-guid]').forEach((button) => {
+        button.addEventListener('click', () => loadPlayer({ guid: Number(button.getAttribute('data-player-guid') || 0) }).catch(handleError));
+      });
+    }
+    if(can('actions')){
+      dom.offenseTable.querySelectorAll('.js-aegis-action').forEach((button) => {
+        button.addEventListener('click', () => submitAction(button.getAttribute('data-action') || '', button.getAttribute('data-target') || ''));
+      });
+    }
     renderPagination(dom.offensePagination, payload.page || 1, payload.pages || 1, (nextPage) => loadOffenses(nextPage).catch(handleError));
   }
 
   async function loadEvents(page){
+    if(!can('events') || !dom.eventTable) return;
     state.eventPage = page || 1;
     setLoading(dom.eventTable, 9);
     const params = new URLSearchParams({
@@ -304,13 +322,16 @@
         </tr>
       `).join('');
     }
-    dom.eventTable.querySelectorAll('[data-player-guid]').forEach((button) => {
-      button.addEventListener('click', () => loadPlayer({ guid: Number(button.getAttribute('data-player-guid') || 0) }).catch(handleError));
-    });
+    if(can('player')){
+      dom.eventTable.querySelectorAll('[data-player-guid]').forEach((button) => {
+        button.addEventListener('click', () => loadPlayer({ guid: Number(button.getAttribute('data-player-guid') || 0) }).catch(handleError));
+      });
+    }
     renderPagination(dom.eventPagination, payload.page || 1, payload.pages || 1, (nextPage) => loadEvents(nextPage).catch(handleError));
   }
 
   async function loadLog(){
+    if(!can('logs') || !dom.logMeta || !dom.logBox) return;
     const json = await request(`/aegis/api/log?limit=${encodeURIComponent(defaults.log_limit || 80)}`, 'GET');
     if(!json || !json.success){
       throw new Error((json && json.message) || t('errors.load_log', 'Failed to load log'));
@@ -321,6 +342,7 @@
   }
 
   async function submitAction(action, target){
+    if(!can('actions')) return;
     if(!action) return;
     const confirmed = window.confirm(t('manual.confirm', 'Confirm this Aegis operation?'));
     if(!confirmed) return;
@@ -330,7 +352,7 @@
     }
     showMessage('success', json.message || t('actions.success', 'Operation completed'));
     await Promise.all([loadOverview(), loadOffenses(state.offensePage), loadEvents(state.eventPage), loadLog()]);
-    if(target){
+    if(target && can('player')){
       await loadPlayer({ name: target });
     }
   }
@@ -339,55 +361,67 @@
     showMessage('error', error && error.message ? error.message : t('errors.generic', 'Request failed'));
   }
 
-  dom.playerForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const raw = (dom.playerLookup.value || '').trim();
-    if(!raw){
-      showMessage('error', t('errors.player_required', 'Please enter player name or GUID'));
-      return;
-    }
-    const guidMatch = raw.match(/#(\d+)/);
-    const guid = /^\d+$/.test(raw) ? Number(raw) : (guidMatch ? Number(guidMatch[1]) : 0);
-    loadPlayer(guid > 0 ? { guid } : { name: raw }).catch(handleError);
-  });
+  if(dom.playerForm && can('player')){
+    dom.playerForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const raw = (dom.playerLookup.value || '').trim();
+      if(!raw){
+        showMessage('error', t('errors.player_required', 'Please enter player name or GUID'));
+        return;
+      }
+      const guidMatch = raw.match(/#(\d+)/);
+      const guid = /^\d+$/.test(raw) ? Number(raw) : (guidMatch ? Number(guidMatch[1]) : 0);
+      loadPlayer(guid > 0 ? { guid } : { name: raw }).catch(handleError);
+    });
+  }
 
-  dom.manualAction.addEventListener('change', () => {
-    const selected = dom.manualAction.selectedOptions[0];
-    const needsTarget = !!(selected && selected.getAttribute('data-needs-target') === '1');
-    dom.manualTarget.disabled = !needsTarget;
-    if(!needsTarget) dom.manualTarget.value = '';
-  });
+  if(dom.manualAction && dom.manualTarget && can('actions')){
+    dom.manualAction.addEventListener('change', () => {
+      const selected = dom.manualAction.selectedOptions[0];
+      const needsTarget = !!(selected && selected.getAttribute('data-needs-target') === '1');
+      dom.manualTarget.disabled = !needsTarget;
+      if(!needsTarget) dom.manualTarget.value = '';
+    });
+  }
 
-  dom.manualForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const action = dom.manualAction.value || '';
-    const selected = dom.manualAction.selectedOptions[0];
-    const needsTarget = !!(selected && selected.getAttribute('data-needs-target') === '1');
-    const target = (dom.manualTarget.value || '').trim();
-    if(needsTarget && !target){
-      showMessage('error', t('errors.target_required', 'Target player is required'));
-      return;
-    }
-    submitAction(action, target).catch(handleError);
-  });
+  if(dom.manualForm && dom.manualAction && dom.manualTarget && can('actions')){
+    dom.manualForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const action = dom.manualAction.value || '';
+      const selected = dom.manualAction.selectedOptions[0];
+      const needsTarget = !!(selected && selected.getAttribute('data-needs-target') === '1');
+      const target = (dom.manualTarget.value || '').trim();
+      if(needsTarget && !target){
+        showMessage('error', t('errors.target_required', 'Target player is required'));
+        return;
+      }
+      submitAction(action, target).catch(handleError);
+    });
+  }
 
-  dom.offenseForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    loadOffenses(1).catch(handleError);
-  });
+  if(dom.offenseForm && can('offenses')){
+    dom.offenseForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      loadOffenses(1).catch(handleError);
+    });
+  }
 
-  dom.eventForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    loadEvents(1).catch(handleError);
-  });
+  if(dom.eventForm && can('events')){
+    dom.eventForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      loadEvents(1).catch(handleError);
+    });
+  }
 
-  dom.refreshAll.addEventListener('click', () => {
-    Promise.all([loadOverview(), loadOffenses(state.offensePage), loadEvents(state.eventPage), loadLog()]).catch(handleError);
-  });
+  if(dom.refreshAll && (can('overview') || can('offenses') || can('events') || can('logs'))){
+    dom.refreshAll.addEventListener('click', () => {
+      Promise.all([loadOverview(), loadOffenses(state.offensePage), loadEvents(state.eventPage), loadLog()]).catch(handleError);
+    });
+  }
 
-  dom.logRefresh.addEventListener('click', () => loadLog().catch(handleError));
-  dom.overviewDays.addEventListener('change', () => loadOverview().catch(handleError));
+  if(dom.logRefresh && can('logs')) dom.logRefresh.addEventListener('click', () => loadLog().catch(handleError));
+  if(dom.overviewDays && can('overview')) dom.overviewDays.addEventListener('change', () => loadOverview().catch(handleError));
 
-  dom.manualAction.dispatchEvent(new Event('change'));
+  if(dom.manualAction && can('actions')) dom.manualAction.dispatchEvent(new Event('change'));
   Promise.all([loadOverview(), loadOffenses(1), loadEvents(1), loadLog()]).catch(handleError);
 })();

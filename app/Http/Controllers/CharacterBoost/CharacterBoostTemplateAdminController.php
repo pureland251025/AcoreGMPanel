@@ -14,11 +14,14 @@ use Acme\Panel\Support\{Auth, Audit, ServerContext};
 
 class CharacterBoostTemplateAdminController extends Controller
 {
+    private function requireTemplateCapability(): void
+    {
+        $this->requireCapability('boost.templates');
+    }
+
     public function index(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->redirect('/account/login');
-        }
+        $this->requireTemplateCapability();
 
         $serverCfg = ServerContext::server();
         $realmId = (int) ($serverCfg['realm_id'] ?? 1);
@@ -26,19 +29,21 @@ class CharacterBoostTemplateAdminController extends Controller
         $repo = new BoostTemplateRepository(ServerContext::currentId());
         $templates = $repo->listForRealmWithRewards($realmId);
 
-        return $this->view('character_boost.templates', [
-            'title' => Lang::get('app.character_boost.templates.title'),
-            'module' => 'character_boost_templates',
+        return $this->pageView('character_boost.templates', [
             'realm_id' => $realmId,
             'templates' => $templates,
+        ], [
+            'module' => 'character_boost_templates',
+            'capabilities' => [
+                'templates' => 'boost.templates',
+                'codes' => 'boost.codes',
+            ],
         ]);
     }
 
     public function edit(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->redirect('/account/login');
-        }
+        $this->requireTemplateCapability();
 
         $serverCfg = ServerContext::server();
         $realmId = (int) ($serverCfg['realm_id'] ?? 1);
@@ -50,32 +55,36 @@ class CharacterBoostTemplateAdminController extends Controller
         if ($id > 0) {
             $template = $repo->findForRealm($realmId, $id);
             if (!$template) {
-                return $this->view('character_boost.template_edit', [
-                    'title' => Lang::get('app.character_boost.templates.edit_title_not_found'),
-                    'module' => 'character_boost_template_edit',
+                return $this->pageView('character_boost.template_edit', [
                     'realm_id' => $realmId,
                     'template' => null,
                     'error' => Lang::get('app.common.errors.not_found'),
+                ], [
+                    'module' => 'character_boost_template_edit',
+                    'capabilities' => [
+                        'templates' => 'boost.templates',
+                        'codes' => 'boost.codes',
+                    ],
                 ]);
             }
         }
 
-        return $this->view('character_boost.template_edit', [
-            'title' => $id > 0
-                ? Lang::get('app.character_boost.templates.edit_title', ['id' => $id])
-                : Lang::get('app.character_boost.templates.create_title'),
-            'module' => 'character_boost_template_edit',
+        return $this->pageView('character_boost.template_edit', [
             'realm_id' => $realmId,
             'template' => $template,
             'error' => null,
+        ], [
+            'module' => 'character_boost_template_edit',
+            'capabilities' => [
+                'templates' => 'boost.templates',
+                'codes' => 'boost.codes',
+            ],
         ]);
     }
 
     public function apiSave(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireTemplateCapability();
 
         $serverCfg = ServerContext::server();
         $realmId = (int) ($serverCfg['realm_id'] ?? 1);
@@ -149,9 +158,7 @@ class CharacterBoostTemplateAdminController extends Controller
 
     public function apiDelete(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireTemplateCapability();
 
         $serverCfg = ServerContext::server();
         $realmId = (int) ($serverCfg['realm_id'] ?? 1);

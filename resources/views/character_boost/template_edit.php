@@ -9,6 +9,13 @@ use Acme\Panel\Support\Csrf;
 $realmId = (int) ($realm_id ?? 1);
 $template = is_array($template ?? null) ? $template : null;
 $error = $error ?? null;
+$boostTemplateCapabilities = is_array($__pageCapabilities ?? null)
+  ? $__pageCapabilities
+  : [
+    'templates' => $__can('boost.templates'),
+    'codes' => $__can('boost.codes'),
+  ];
+$__pageCapabilities = $boostTemplateCapabilities;
 
 $isEdit = $template && isset($template['id']);
 $id = $isEdit ? (int) $template['id'] : 0;
@@ -37,28 +44,21 @@ if ($isEdit && !empty($template['class_rewards']) && is_array($template['class_r
     }
 }
 $tiers = array_values(array_unique($tiers));
+$capabilityNotice = $boostTemplateCapabilities['templates'] ?? false
+    ? null
+    : __('app.common.capabilities.page_limited');
 ?>
 
 <?php if($error): ?>
   <div class="panel-flash panel-flash--danger panel-flash--inline is-visible"><?= htmlspecialchars((string)$error) ?></div>
 <?php endif; ?>
 
-<h1 class="page-title">
-  <?= htmlspecialchars($isEdit ? __('app.character_boost.templates.edit_heading', ['id' => $id]) : __('app.character_boost.templates.create_heading')) ?>
-</h1>
+<?php include __DIR__ . '/../components/capability_notice.php'; ?>
 
-<div class="panel" style="margin-bottom:12px">
-  <div class="flex between center" style="gap:12px;flex-wrap:wrap">
-    <div style="opacity:.8"><?= htmlspecialchars(__('app.character_boost.templates.hint.realm', ['id' => $realmId])) ?></div>
-    <div class="flex center" style="gap:10px;flex-wrap:wrap">
-      <a class="btn" href="<?= url('/character-boost/templates') ?>"><?= htmlspecialchars(__('app.character_boost.templates.actions.back')) ?></a>
-      <a class="btn" href="<?= url('/character-boost/redeem-codes') ?>"><?= htmlspecialchars(__('app.character_boost.templates.actions.codes')) ?></a>
-    </div>
-  </div>
-</div>
+<?php include __DIR__ . '/../components/page_header.php'; ?>
 
 <div class="panel">
-  <div id="boostTplEditFlash" class="panel-flash panel-flash--inline" style="display:none"></div>
+  <div id="boostTplEditFlash" class="panel-flash panel-flash--inline cb-flash-hidden"></div>
 
   <form id="boostTplEditForm" class="form" data-endpoint="<?= htmlspecialchars($endpoint) ?>">
     <?= Csrf::field() ?>
@@ -83,7 +83,7 @@ $tiers = array_values(array_unique($tiers));
 
     <div class="form-row">
       <label class="label"><?= htmlspecialchars(__('app.character_boost.templates.fields.require_match')) ?></label>
-      <label style="display:flex;gap:8px;align-items:center">
+      <label class="cb-inline-check">
         <input type="checkbox" name="require_account_level_match" value="1" <?= ((int)($template['require_account_level_match'] ?? 0) === 1) ? 'checked' : '' ?> />
         <span><?= htmlspecialchars(__('app.character_boost.templates.fields.require_match_label')) ?></span>
       </label>
@@ -91,16 +91,16 @@ $tiers = array_values(array_unique($tiers));
 
     <div class="form-row">
       <label class="label" for="boostTplItems"><?= htmlspecialchars(__('app.character_boost.templates.fields.items')) ?></label>
-      <textarea id="boostTplItems" name="items" class="input" style="min-height:160px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"><?= htmlspecialchars(implode("\n", $itemsLines)) ?></textarea>
-      <div class="help" style="margin-top:6px;opacity:.75;font-size:13px">
+      <textarea id="boostTplItems" name="items" class="input cb-mono-textarea cb-mono-textarea--lg"><?= htmlspecialchars(implode("\n", $itemsLines)) ?></textarea>
+      <div class="help cb-help">
         <?= htmlspecialchars(__('app.character_boost.templates.hint.items_format')) ?>
       </div>
     </div>
 
     <div class="form-row">
       <label class="label" for="boostTplTiers"><?= htmlspecialchars(__('app.character_boost.templates.fields.class_rewards')) ?></label>
-      <textarea id="boostTplTiers" name="class_rewards" class="input" style="min-height:90px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"><?= htmlspecialchars(implode("\n", $tiers)) ?></textarea>
-      <div class="help" style="margin-top:6px;opacity:.75;font-size:13px">
+      <textarea id="boostTplTiers" name="class_rewards" class="input cb-mono-textarea cb-mono-textarea--md"><?= htmlspecialchars(implode("\n", $tiers)) ?></textarea>
+      <div class="help cb-help">
         <?= htmlspecialchars(__('app.character_boost.templates.hint.class_rewards')) ?>
       </div>
     </div>

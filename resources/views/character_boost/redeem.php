@@ -8,12 +8,12 @@ use Acme\Panel\Support\Csrf;
 
 $endpointOptions = url('/public/character-boost/options');
 $endpointRedeem = url('/public/character-boost/redeem');
+
+include dirname(__DIR__) . '/components/page_header.php';
 ?>
 
-<h1 style="margin:0 0 12px"><?= htmlspecialchars(__('app.character_boost.redeem.title')) ?></h1>
-
-<div class="panel" style="margin-bottom:12px">
-  <div id="boostRedeemFlash" class="panel-flash panel-flash--inline" style="display:none"></div>
+<div class="panel cb-panel-section">
+  <div id="boostRedeemFlash" class="panel-flash panel-flash--inline cb-flash-hidden"></div>
 
   <form id="boostRedeemForm" class="form" data-options-endpoint="<?= htmlspecialchars($endpointOptions) ?>" data-redeem-endpoint="<?= htmlspecialchars($endpointRedeem) ?>">
     <?= Csrf::field() ?>
@@ -30,7 +30,7 @@ $endpointRedeem = url('/public/character-boost/redeem');
       <select id="boostRedeemTemplate" name="template_id" class="input" disabled>
         <option value=""><?= htmlspecialchars(__('app.character_boost.redeem.fields.template_loading')) ?></option>
       </select>
-      <div class="help" style="margin-top:6px;opacity:.75;font-size:13px">
+      <div class="help cb-help">
         <?= htmlspecialchars(__('app.character_boost.redeem.hint.template_auto')) ?>
       </div>
     </div>

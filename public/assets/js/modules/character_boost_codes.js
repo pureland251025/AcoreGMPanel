@@ -1,4 +1,11 @@
 (function(){
+  const panel = window.Panel || {};
+  const moduleLocaleFn = typeof panel.moduleLocale === 'function'
+    ? panel.moduleLocale.bind(panel)
+    : null;
+  const moduleTranslator = typeof panel.createModuleTranslator === 'function'
+    ? panel.createModuleTranslator('character_boost')
+    : null;
   const form = document.getElementById('boostCodesForm');
   const flashBox = document.getElementById('boostCodesFlash');
   const output = document.getElementById('boostCodesOutput');
@@ -26,6 +33,25 @@
   const manageSort = 'id';
   let manageDir = 'desc';
 
+  const translate = (path, fallback, replacements) => {
+    const sentinel = 'modules.character_boost.' + path;
+    let text = sentinel;
+    if(moduleLocaleFn){
+      text = moduleLocaleFn('character_boost', path, sentinel);
+    } else if(moduleTranslator){
+      text = moduleTranslator(path, sentinel);
+    }
+    if(text === sentinel){
+      text = fallback ?? sentinel;
+    }
+    if(typeof text === 'string' && replacements){
+      Object.entries(replacements).forEach(([key, value]) => {
+        text = text.replace(new RegExp(':' + key + '(?![A-Za-z0-9_])', 'g'), String(value ?? ''));
+      });
+    }
+    return text;
+  };
+
   const updateSortUi = () => {
     if(!sortIdIcon) return;
     sortIdIcon.textContent = (manageDir === 'asc') ? '▲' : '▼';
@@ -33,18 +59,24 @@
 
   const showFlash = (msg, ok) => {
     if(!flashBox) return;
-    flashBox.textContent = msg || (ok ? 'OK' : 'Error');
+    flashBox.textContent = msg || translate(
+      ok ? 'common.ok' : 'common.error',
+      ok ? 'OK' : 'Error'
+    );
     flashBox.classList.remove('panel-flash--success','panel-flash--danger');
     flashBox.classList.add('panel-flash--inline','is-visible', ok ? 'panel-flash--success' : 'panel-flash--danger');
-    flashBox.style.display = 'block';
+    flashBox.hidden = false;
   };
 
   const showManageFlash = (msg, ok) => {
     if(!manageFlash) return;
-    manageFlash.textContent = msg || (ok ? 'OK' : 'Error');
+    manageFlash.textContent = msg || translate(
+      ok ? 'common.ok' : 'common.error',
+      ok ? 'OK' : 'Error'
+    );
     manageFlash.classList.remove('panel-flash--success','panel-flash--danger');
     manageFlash.classList.add('panel-flash--inline','is-visible', ok ? 'panel-flash--success' : 'panel-flash--danger');
-    manageFlash.style.display = 'block';
+    manageFlash.hidden = false;
   };
 
   const csrfFrom = (fallbackForm) => {
@@ -64,7 +96,10 @@
         'Accept': 'application/json'
       }
     });
-    return await res.json().catch(() => ({ success: false, message: 'Invalid response' }));
+    return await res.json().catch(() => ({
+      success: false,
+      message: translate('common.invalid_response', 'Invalid response')
+    }));
   };
 
   const currentTemplateId = () => {
@@ -88,26 +123,38 @@
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c] || c));
 
     if(!Array.isArray(items) || items.length === 0){
-      manageTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;opacity:.75">(empty)</td></tr>';
+      manageTbody.innerHTML = '<tr><td colspan="7" class="cb-empty-cell">'
+        + esc(translate('codes.table.empty', 'No redeem codes'))
+        + '</td></tr>';
       return;
     }
 
     manageTbody.innerHTML = items.map(row => {
       const used = !!row.used_at;
-      const status = used ? 'USED' : 'UNUSED';
+      const status = used
+        ? translate('codes.status.used', 'USED')
+        : translate('codes.status.unused', 'UNUSED');
       const usedBy = used
-        ? (esc(row.used_character_name || '') + (row.used_realm_id ? (' (realm ' + esc(row.used_realm_id) + ')') : '') + (row.used_ip ? (' / ' + esc(row.used_ip)) : ''))
+        ? (
+          esc(row.used_character_name || '')
+          + (row.used_realm_id
+            ? esc(translate('codes.usage.realm_suffix', ' (realm :id)', { id: row.used_realm_id }))
+            : '')
+          + (row.used_ip ? (' / ' + esc(row.used_ip)) : '')
+        )
         : '-';
       const act = used
-        ? '<span style="opacity:.6">-</span>'
-        : '<button class="btn btn-sm btn-danger js-del-unused" data-id="' + esc(row.id) + '">Delete</button>';
+        ? '<span class="cb-muted">-</span>'
+        : '<button class="btn btn-sm btn-danger js-del-unused" data-id="' + esc(row.id) + '">'
+          + esc(translate('codes.actions.delete_unused', 'Delete'))
+          + '</button>';
 
       return (
         '<tr>'
         + '<td>' + esc(row.id) + '</td>'
         + '<td>' + esc(row.template_name || ('#' + row.template_id)) + '</td>'
-        + '<td style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \'Liberation Mono\', \'Courier New\', monospace">' + esc(row.code) + '</td>'
-        + '<td>' + status + '</td>'
+        + '<td class="cb-code-cell">' + esc(row.code) + '</td>'
+        + '<td>' + esc(status) + '</td>'
         + '<td>' + usedBy + '</td>'
         + '<td>' + esc(row.created_at || '-') + '</td>'
         + '<td>' + act + '</td>'
@@ -121,7 +168,11 @@
     const page = list ? (parseInt(list.page, 10) || 1) : 1;
     const pages = list ? (parseInt(list.pages, 10) || 1) : 1;
     const total = list ? (parseInt(list.total, 10) || 0) : 0;
-    pageInfo.textContent = 'Page ' + page + ' / ' + pages + ' · ' + total;
+    pageInfo.textContent = translate(
+      'codes.pager.summary',
+      'Page :page / :pages · :total',
+      { page, pages, total }
+    );
     if(btnPrev) btnPrev.disabled = page <= 1;
     if(btnNext) btnNext.disabled = page >= pages;
   };
@@ -134,7 +185,6 @@
 
     updateSortUi();
 
-    // Stats
     try {
       const d1 = new FormData();
       d1.set('_csrf', csrfToken);
@@ -149,8 +199,9 @@
       setStats(null);
     }
 
-    // List
-    manageTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;opacity:.75">Loading…</td></tr>';
+    manageTbody.innerHTML = '<tr><td colspan="7" class="cb-empty-cell">'
+      + translate('common.loading', 'Loading…')
+      + '</td></tr>';
     const d2 = new FormData();
     d2.set('_csrf', csrfToken);
     d2.set('template_id', tpl);
@@ -164,7 +215,12 @@
     if(!(listJson && listJson.success && listJson.payload && listJson.payload.list)){
       renderRows([]);
       updatePager(null);
-      showManageFlash((listJson && listJson.message) ? listJson.message : 'Failed', false);
+      showManageFlash(
+        (listJson && listJson.message)
+          ? listJson.message
+          : translate('common.failed', 'Failed'),
+        false
+      );
       return;
     }
 
@@ -203,7 +259,6 @@
           output.value = text || '';
         }
 
-        // Trigger download
         const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
         const a = document.createElement('a');
         a.href = url;
@@ -217,18 +272,36 @@
         URL.revokeObjectURL(url);
 
         const cnt = res.headers.get('X-Generated-Count');
-        showFlash(cnt ? ('OK (' + cnt + ')') : 'OK', true);
+        showFlash(
+          cnt
+            ? translate('codes.generated.download_ok_count', 'OK (:count)', { count: cnt })
+            : translate('codes.generated.download_ok', 'OK'),
+          true
+        );
         return;
       }
 
-      const json = await res.json().catch(() => ({ success: false, message: 'Invalid response' }));
+      const json = await res.json().catch(() => ({
+        success: false,
+        message: translate('common.invalid_response', 'Invalid response')
+      }));
 
       if(output){
         output.value = '';
         if(json && json.success && json.payload && Array.isArray(json.payload.generated)){
           const blocks = [];
           json.payload.generated.forEach(g => {
-            const header = (g.template_name ? (g.template_name + ' (#' + g.template_id + ')') : ('Template #' + g.template_id));
+            const header = g.template_name
+              ? translate(
+                'codes.generated.template_named',
+                ':name (#:id)',
+                { name: g.template_name, id: g.template_id }
+              )
+              : translate(
+                'codes.generated.template_fallback',
+                'Template #:id',
+                { id: g.template_id }
+              );
             blocks.push('[' + header + ']');
             if(Array.isArray(g.codes)){
               g.codes.forEach(c => blocks.push(String(c)));
@@ -239,17 +312,27 @@
         }
       }
 
-      showFlash((json && json.message) ? json.message : (json && json.success ? 'OK' : 'Failed'), !!(json && json.success));
+      showFlash(
+        (json && json.message)
+          ? json.message
+          : translate(
+            json && json.success ? 'common.ok' : 'common.failed',
+            json && json.success ? 'OK' : 'Failed'
+          ),
+        !!(json && json.success)
+      );
 
       if(json && json.success){
-        // After generating new codes, refresh management table & stats.
         if(manageForm){
           managePage = 1;
           refreshManage().catch(()=>{});
         }
       }
     } catch(err){
-      showFlash((err && err.message) ? err.message : 'Network error', false);
+      showFlash(
+        (err && err.message) ? err.message : translate('common.network_error', 'Network error'),
+        false
+      );
     }
   });
 
@@ -272,18 +355,27 @@
       if(managePage > 1){ managePage--; refreshManage().catch(()=>{}); }
     });
     if(btnNext) btnNext.addEventListener('click', () => {
-      managePage++; refreshManage().catch(()=>{});
+      managePage++;
+      refreshManage().catch(()=>{});
     });
 
     if(btnPurgeUnused){
       btnPurgeUnused.addEventListener('click', async () => {
-        if(!confirm('Delete ALL unused redeem codes?')) return;
+        if(!confirm(translate('codes.confirm.purge_unused', 'Delete ALL unused redeem codes?'))) return;
         const csrfToken = csrfFrom(manageForm);
         const d = new FormData();
         d.set('_csrf', csrfToken);
         d.set('template_id', currentTemplateId());
         const json = await postJson(manageForm.dataset.endpointPurgeUnused, d, csrfToken);
-        showManageFlash((json && json.message) ? json.message : (json && json.success ? 'OK' : 'Failed'), !!(json && json.success));
+        showManageFlash(
+          (json && json.message)
+            ? json.message
+            : translate(
+              json && json.success ? 'common.ok' : 'common.failed',
+              json && json.success ? 'OK' : 'Failed'
+            ),
+          !!(json && json.success)
+        );
         managePage = 1;
         refreshManage().catch(()=>{});
       });
@@ -294,18 +386,25 @@
       if(!btn) return;
       const id = btn.getAttribute('data-id');
       if(!id) return;
-      if(!confirm('Delete this unused redeem code?')) return;
+      if(!confirm(translate('codes.confirm.delete_unused', 'Delete this unused redeem code?'))) return;
 
       const csrfToken = csrfFrom(manageForm);
       const d = new FormData();
       d.set('_csrf', csrfToken);
       d.set('id', String(id));
       const json = await postJson(manageForm.dataset.endpointDeleteUnused, d, csrfToken);
-      showManageFlash((json && json.message) ? json.message : (json && json.success ? 'OK' : 'Failed'), !!(json && json.success));
+      showManageFlash(
+        (json && json.message)
+          ? json.message
+          : translate(
+            json && json.success ? 'common.ok' : 'common.failed',
+            json && json.success ? 'OK' : 'Failed'
+          ),
+        !!(json && json.success)
+      );
       refreshManage().catch(()=>{});
     });
 
-    // Initial load
     refreshManage().catch(()=>{});
   }
 })();

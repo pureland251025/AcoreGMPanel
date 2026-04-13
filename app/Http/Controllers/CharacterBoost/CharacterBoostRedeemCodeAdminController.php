@@ -14,11 +14,14 @@ use Acme\Panel\Support\{Auth, Audit, ServerContext};
 
 class CharacterBoostRedeemCodeAdminController extends Controller
 {
+    private function requireCodesCapability(): void
+    {
+        $this->requireCapability('boost.codes');
+    }
+
     public function index(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->redirect('/account/login');
-        }
+        $this->requireCodesCapability();
 
         $serverCfg = ServerContext::server();
         $realmId = (int) ($serverCfg['realm_id'] ?? 1);
@@ -26,19 +29,21 @@ class CharacterBoostRedeemCodeAdminController extends Controller
         $tplRepo = new BoostTemplateRepository(ServerContext::currentId());
         $templates = $tplRepo->listForRealm($realmId);
 
-        return $this->view('character_boost.codes', [
-            'title' => Lang::get('app.character_boost.codes.title'),
-            'module' => 'character_boost_codes',
+        return $this->pageView('character_boost.codes', [
             'realm_id' => $realmId,
             'templates' => $templates,
+        ], [
+            'module' => 'character_boost_codes',
+            'capabilities' => [
+                'templates' => 'boost.templates',
+                'codes' => 'boost.codes',
+            ],
         ]);
     }
 
     public function apiGenerate(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireCodesCapability();
 
         $templateRaw = (string) $request->input('template_id', '');
         $count = (int) $request->input('count', 0);
@@ -143,27 +148,21 @@ class CharacterBoostRedeemCodeAdminController extends Controller
 
     public function apiStats(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireCodesCapability();
 
-        $serverCfg = ServerContext::server();
-        $realmId = (int) ($serverCfg['realm_id'] ?? 1);
-
-        $templateRaw = (string) $request->input('template_id', '');
-        $templateId = $templateRaw === '' || $templateRaw === 'all' ? null : (int) $templateRaw;
+        $state = $this->prepareRedeemCodeStatsState($request);
 
         $repo = new BoostTemplateRepository(ServerContext::currentId());
 
         try {
-            if ($templateId !== null && $templateId > 0) {
-                $tpl = $repo->findForRealm($realmId, $templateId);
+            if ($state['template_id'] !== null && $state['template_id'] > 0) {
+                $tpl = $repo->findForRealm($state['realm_id'], $state['template_id']);
                 if (!$tpl) {
                     return $this->json(['success' => false, 'message' => Lang::get('app.character_boost.codes.errors.invalid_template')], 422);
                 }
             }
 
-            $stats = $repo->redeemCodeStatsForRealm($realmId, $templateId);
+            $stats = $repo->redeemCodeStatsForRealm($state['realm_id'], $state['template_id']);
         } catch (\Throwable $e) {
             return $this->json(['success' => false, 'message' => Lang::get('app.common.api.errors.request_failed_retry')], 500);
         }
@@ -171,8 +170,8 @@ class CharacterBoostRedeemCodeAdminController extends Controller
         return $this->json([
             'success' => true,
             'payload' => [
-                'realm_id' => $realmId,
-                'template_id' => $templateId,
+                'realm_id' => $state['realm_id'],
+                'template_id' => $state['template_id'],
                 'stats' => $stats,
             ],
         ]);
@@ -180,40 +179,29 @@ class CharacterBoostRedeemCodeAdminController extends Controller
 
     public function apiList(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireCodesCapability();
 
-        $serverCfg = ServerContext::server();
-        $realmId = (int) ($serverCfg['realm_id'] ?? 1);
-
-        $templateRaw = (string) $request->input('template_id', '');
-        $templateId = $templateRaw === '' || $templateRaw === 'all' ? null : (int) $templateRaw;
-        $unusedOnly = $request->bool('unused_only', false);
-
-        $sort = strtolower(trim((string) $request->input('sort', 'id')));
-        $dir = strtolower(trim((string) $request->input('dir', 'desc')));
-        if ($sort !== 'id') {
-            $sort = 'id';
-        }
-        if (!in_array($dir, ['asc', 'desc'], true)) {
-            $dir = 'desc';
-        }
-
-        $page = (int) $request->input('page', 1);
-        $perPage = (int) $request->input('per_page', 50);
+        $state = $this->prepareRedeemCodeListState($request);
 
         $repo = new BoostTemplateRepository(ServerContext::currentId());
 
         try {
-            if ($templateId !== null && $templateId > 0) {
-                $tpl = $repo->findForRealm($realmId, $templateId);
+            if ($state['template_id'] !== null && $state['template_id'] > 0) {
+                $tpl = $repo->findForRealm($state['realm_id'], $state['template_id']);
                 if (!$tpl) {
                     return $this->json(['success' => false, 'message' => Lang::get('app.character_boost.codes.errors.invalid_template')], 422);
                 }
             }
 
-            $list = $repo->listRedeemCodesForRealm($realmId, $templateId, $unusedOnly ? true : null, $page, $perPage, $sort, $dir);
+            $list = $repo->listRedeemCodesForRealm(
+                $state['realm_id'],
+                $state['template_id'],
+                $state['unused_only'] ? true : null,
+                $state['page'],
+                $state['per_page'],
+                $state['sort'],
+                $state['dir']
+            );
         } catch (\Throwable $e) {
             return $this->json(['success' => false, 'message' => Lang::get('app.common.api.errors.request_failed_retry')], 500);
         }
@@ -221,9 +209,9 @@ class CharacterBoostRedeemCodeAdminController extends Controller
         return $this->json([
             'success' => true,
             'payload' => [
-                'realm_id' => $realmId,
-                'template_id' => $templateId,
-                'unused_only' => $unusedOnly ? 1 : 0,
+                'realm_id' => $state['realm_id'],
+                'template_id' => $state['template_id'],
+                'unused_only' => $state['unused_only'] ? 1 : 0,
                 'list' => $list,
             ],
         ]);
@@ -231,9 +219,7 @@ class CharacterBoostRedeemCodeAdminController extends Controller
 
     public function apiDeleteUnused(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireCodesCapability();
 
         $id = (int) $request->input('id', 0);
         if ($id <= 0) {
@@ -264,9 +250,7 @@ class CharacterBoostRedeemCodeAdminController extends Controller
 
     public function apiPurgeUnused(Request $request): Response
     {
-        if (!Auth::check()) {
-            return $this->json(['success' => false, 'message' => Lang::get('app.auth.errors.not_logged_in')], 403);
-        }
+        $this->requireCodesCapability();
 
         $templateRaw = (string) $request->input('template_id', '');
         $templateId = $templateRaw === '' || $templateRaw === 'all' ? null : (int) $templateRaw;
@@ -301,5 +285,38 @@ class CharacterBoostRedeemCodeAdminController extends Controller
                 'deleted' => $deleted,
             ],
         ]);
+    }
+
+    private function prepareRedeemCodeStatsState(Request $request): array
+    {
+        $serverCfg = ServerContext::server();
+
+        return [
+            'realm_id' => (int) ($serverCfg['realm_id'] ?? 1),
+            'template_id' => $this->normalizedNullableTemplateId($request),
+        ];
+    }
+
+    private function prepareRedeemCodeListState(Request $request): array
+    {
+        $state = $this->prepareRedeemCodeStatsState($request);
+
+        return $state + [
+            'unused_only' => $request->bool('unused_only', false),
+            'sort' => $this->normalizedEnum($request, 'sort', ['id'], 'id'),
+            'dir' => strtolower($this->normalizedDirection($request, 'dir', 'DESC')),
+            'page' => $this->normalizedPage($request),
+            'per_page' => $this->boundedInt($request, 'per_page', 50, 1, 200),
+        ];
+    }
+
+    private function normalizedNullableTemplateId(Request $request): ?int
+    {
+        $templateRaw = $this->normalizedString($request, 'template_id');
+        if ($templateRaw === '' || $templateRaw === 'all') {
+            return null;
+        }
+
+        return (int) $templateRaw;
     }
 }
